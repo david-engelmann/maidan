@@ -557,6 +557,11 @@ at-least-once; rows that use up their attempts are quarantined.
 In the console, Tools, Integrations lists a workspace's webhooks, adds and
 revokes them, and lists these sends beside them
 ([Webhooks](Integration%20Reference.md#webhooks)).
+A webhook made in the console acts as one of the signed-in admin's own tokens
+that holds `workspace:admin` and `workspace:read`, and ends when that token is
+revoked or the member is deactivated, as a webhook made with that token does.
+The console makes no token for it, and an admin who holds no such token is
+refused.
 
 ### A2A over gRPC
 

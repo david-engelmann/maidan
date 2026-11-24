@@ -8,12 +8,11 @@ use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
     capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
-    decrypt_peer_secret_rotating, encrypt_peer_secret, hash_secret, AuthContext, TokenSecret,
+    decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
-    inject_type, ApiTokenId, AuditScope, Event, EventKind, MemberId, NewApiToken, NewAuditEvent,
-    NewWebhookSubscription, WebhookSubscription, WebhookSubscriptionId, WorkspaceId,
-    ROOM_LSN_HEADER,
+    inject_type, ApiTokenId, Event, EventKind, NewWebhookSubscription, WebhookSubscription,
+    WebhookSubscriptionId, WorkspaceId, ROOM_LSN_HEADER,
 };
 use serde::Serialize;
 use sha2::Sha256;
@@ -138,124 +137,18 @@ pub async fn create_webhook(
             "a webhook is made with a token, which this caller does not hold".into(),
         )
     })?;
-    create(&state, &auth, workspace_id, body, Authority::Token(token)).await
+    create(&state, &auth, workspace_id, body, token).await
 }
 
-/// What a new subscription acts as. A webhook only delivers while the token
-/// that registered it could register it again, so every webhook has one.
-pub(crate) enum Authority {
-    /// The token the caller presented.
-    Token(ApiTokenId),
-    /// A browser session has no token to act as. A token is minted for the
-    /// webhook, for this member, holding exactly `workspace:admin` and
-    /// `workspace:read`. Its secret is made and thrown away, so nobody can
-    /// present it, and the webhook ends when the member does or when this
-    /// token is revoked. The caller has already checked the member may hold
-    /// both capabilities.
-    MintFor(MemberId),
-}
-
-/// The label of the token minted for a webhook, as a person reads it in their
-/// token list. It carries the webhook's id, which is how a revoke knows the
-/// token was minted for this webhook and not by the person.
-fn authority_label(url: &str, id: WebhookSubscriptionId) -> String {
-    let host = reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_string))
-        .unwrap_or_else(|| "a webhook".into());
-    format!("Webhook to {host} (id {})", id.0)
-}
-
-fn authority_capabilities() -> Vec<String> {
-    vec![WORKSPACE_ADMIN.to_string(), WORKSPACE_READ.to_string()]
-}
-
-async fn mint_authority(
-    state: &AppState,
-    auth: &AuthContext,
-    workspace_id: WorkspaceId,
-    member_id: MemberId,
-    label: String,
-) -> ApiResult<ApiTokenId> {
-    // Bounded like every mint, by the caller's minting vocabulary, so this
-    // path can never hand out what `token:admin` could not mint directly.
-    let vocabulary = crate::routes::mint_vocabulary(auth);
-    let capabilities = authority_capabilities();
-    if let Some(outside) = capabilities.iter().find(|cap| !vocabulary.contains(cap)) {
-        return Err(ApiError::Forbidden(format!(
-            "a webhook's token cannot hold {outside}"
-        )));
-    }
-    // Never kept: the hash is of a secret that is not returned or stored.
-    let secret = TokenSecret::generate();
-    let actor = auth.actor_id();
-    let record = state
-        .store
-        .create_api_token_audited(
-            NewApiToken {
-                workspace_id,
-                member_id,
-                app_installation_id: None,
-                token_hash: hash_secret(secret.as_str()),
-                label: Some(label),
-                capabilities,
-                expires_at: None,
-            },
-            Box::new(move |record| NewAuditEvent {
-                scope: AuditScope::Workspace(record.workspace_id),
-                actor_id: Some(actor),
-                action: "token.mint".into(),
-                target_kind: Some("api_token".into()),
-                target_id: Some(record.id.0),
-                metadata: serde_json::json!({
-                    "workspace_id": record.workspace_id.0,
-                    "subject_member_id": record.member_id.0,
-                    "capabilities": record.capabilities.clone(),
-                    "source": "webhook",
-                }),
-            }),
-        )
-        .await?;
-    Ok(record.id)
-}
-
-async fn revoke_token(
-    state: &AppState,
-    auth: &AuthContext,
-    token_id: ApiTokenId,
-    source: &'static str,
-) {
-    let actor = auth.actor_id();
-    let revoked = state
-        .store
-        .revoke_api_token_audited(
-            token_id,
-            Box::new(move |revoked| NewAuditEvent {
-                scope: AuditScope::Workspace(revoked.workspace_id),
-                actor_id: Some(actor),
-                action: "token.revoke".into(),
-                target_kind: Some("api_token".into()),
-                target_id: Some(revoked.id.0),
-                metadata: serde_json::json!({
-                    "workspace_id": revoked.workspace_id.0,
-                    "subject_member_id": revoked.member_id.0,
-                    "source": source,
-                }),
-            }),
-        )
-        .await;
-    if let Err(err) = revoked {
-        tracing::warn!(error = %err, token_id = %token_id.0, "webhook authority token not revoked");
-    }
-}
-
-/// Create the subscription. The caller has already been allowed to.
+/// Create the subscription, acting as `created_by_token`: it delivers while
+/// that token is live and holds the capability, and ends when the token does
+/// or its member is deactivated. The caller has already been allowed to.
 pub(crate) async fn create(
     state: &AppState,
     auth: &AuthContext,
     workspace_id: WorkspaceId,
     body: CreateWebhook,
-    authority: Authority,
+    created_by_token: ApiTokenId,
 ) -> ApiResult<(StatusCode, Json<MintWebhookResponse>)> {
     validate_webhook_url(&body.url)?;
     let event_kinds = parse_event_kinds(&body.event_kinds)?;
@@ -269,37 +162,18 @@ pub(crate) async fn create(
     let secret_ciphertext =
         encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let url = body.url.trim().to_string();
-    let id = WebhookSubscriptionId(uuid::Uuid::now_v7());
-    let (created_by_token, minted) = match authority {
-        Authority::Token(token) => (token, false),
-        Authority::MintFor(member) => (
-            mint_authority(state, auth, workspace_id, member, authority_label(&url, id)).await?,
-            true,
-        ),
-    };
-    let subscription = match state
+    let subscription = state
         .store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: Some(id),
             workspace_id,
-            url,
+            url: body.url.trim().to_string(),
             label: body.label,
             event_kinds,
             secret_ciphertext,
             // The subscription delivers as this token, and stops when it does.
             created_by_token: Some(created_by_token),
         })
-        .await
-    {
-        Ok(subscription) => subscription,
-        Err(err) => {
-            if minted {
-                revoke_token(state, auth, created_by_token, "webhook_not_created").await;
-            }
-            return Err(err.into());
-        }
-    };
+        .await?;
     crate::registration_owner::record_registration(
         state,
         auth,
@@ -422,47 +296,21 @@ pub async fn revoke_webhook(
     let webhook_id = WebhookSubscriptionId(webhook_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    revoke(&state, &auth, workspace_id, webhook_id).await
+    revoke(&state, workspace_id, webhook_id).await
 }
 
-/// Revoke the subscription, and the token that was minted for it when it was
-/// made on a browser session. A token the person made themselves is never
-/// touched: the one revoked here is live, holds exactly the two capabilities
-/// a minted one does and carries this webhook's id in its label. The caller
-/// has already been allowed to.
+/// Revoke the subscription. The token it acted as is the person's own and is
+/// left alone. The caller has already been allowed to.
 pub(crate) async fn revoke(
     state: &AppState,
-    auth: &AuthContext,
     workspace_id: WorkspaceId,
     webhook_id: WebhookSubscriptionId,
 ) -> ApiResult<StatusCode> {
-    let authority = match state.store.get_webhook_subscription(webhook_id).await {
-        Ok(held) if held.subscription.workspace_id == workspace_id => held.created_by_token,
-        _ => None,
-    };
     state
         .store
         .revoke_webhook_subscription(workspace_id, webhook_id)
         .await?;
     forget_webhook_secret(&state.webhooks.secrets, webhook_id);
-    if let Some(token_id) = authority
-        && let Ok(token) = state.store.get_api_token(token_id).await
-    {
-        let mut capabilities = token.capabilities.clone();
-        capabilities.sort();
-        let mut minted = authority_capabilities();
-        minted.sort();
-        let minted_for_this = token.revoked_at.is_none()
-            && token.workspace_id == workspace_id
-            && capabilities == minted
-            && token.label.as_deref().is_some_and(|label| {
-                label.starts_with("Webhook to ")
-                    && label.ends_with(&format!("(id {})", webhook_id.0))
-            });
-        if minted_for_this {
-            revoke_token(state, auth, token_id, "webhook_revoked").await;
-        }
-    }
     Ok(StatusCode::NO_CONTENT)
 }
 

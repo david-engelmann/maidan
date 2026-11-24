@@ -31,7 +31,6 @@ async fn unified_deliveries_list_and_replay_webhook_and_automation() {
 
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: None,
             workspace_id: ws_id,
             url: "http://127.0.0.1:9/hook".into(),
             label: None,

@@ -116,7 +116,6 @@ async fn subscribed(
     let sub = state
         .store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: None,
             workspace_id: ws,
             url: format!("http://{addr}/hook"),
             label: None,

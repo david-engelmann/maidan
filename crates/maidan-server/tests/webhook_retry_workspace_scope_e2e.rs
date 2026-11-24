@@ -54,7 +54,6 @@ async fn a_queued_delivery_carrying_another_workspaces_event_is_quarantined_unse
     let creator = test_support::registrar(store, a).await;
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: None,
             workspace_id: a,
             // Nothing listens here: a delivery that is attempted records an
             // attempt, one that is refused first records none.

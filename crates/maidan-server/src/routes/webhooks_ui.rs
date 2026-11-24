@@ -16,7 +16,7 @@ use maidan_auth::{
     capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_types::{MemberKind, WebhookSubscriptionId, WorkspaceId};
+use maidan_types::{ApiTokenId, MemberId, MemberKind, WebhookSubscriptionId, WorkspaceId};
 
 use super::{cap, ensure_workspace, ApiResult};
 use crate::dto::{CreateWebhook, MintWebhookResponse, WebhookResponse};
@@ -76,6 +76,39 @@ async fn console_webhook_admin(
     }
 }
 
+/// The member's own token a webhook made on their session acts as: a live one
+/// holding both `workspace:admin` and `workspace:read`. The one with no expiry
+/// if there is one, else the latest expiry, ties going to the newest. `403`
+/// when they hold none.
+async fn own_webhook_token(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> ApiResult<ApiTokenId> {
+    let now = chrono::Utc::now();
+    state
+        .store
+        .list_api_tokens_for_member(workspace_id, member_id)
+        .await?
+        .into_iter()
+        .filter(|t| {
+            t.revoked_at.is_none()
+                && t.expires_at.is_none_or(|at| at > now)
+                && [WORKSPACE_ADMIN, WORKSPACE_READ]
+                    .iter()
+                    .all(|needed| t.capabilities.iter().any(|c| c == needed))
+        })
+        // `None` (no expiry) sorts last, so the maximum is the one that never
+        // expires, then the latest expiry, then the newest.
+        .max_by_key(|t| (t.expires_at.is_none(), t.expires_at, t.created_at))
+        .map(|t| t.id)
+        .ok_or_else(|| {
+            ApiError::Forbidden(
+                "a webhook acts as one of your tokens, and you hold none with workspace:admin and workspace:read".into(),
+            )
+        })
+}
+
 /// `GET /ui/api/workspaces/:wid/webhooks`.
 pub async fn ui_list_webhooks(
     State(state): State<AppState>,
@@ -112,27 +145,22 @@ pub async fn ui_create_webhook(
         Act::Create,
     )
     .await?;
-    let authority = match session.as_ref() {
+    let created_by_token = match session.as_ref() {
         // A bearer on the twin acts as its own token, as on the bearer route.
-        None => crate::webhooks::Authority::Token(auth.token_id().ok_or_else(|| {
+        None => auth.token_id().ok_or_else(|| {
             ApiError::Forbidden(
                 "a webhook is made with a token, which this caller does not hold".into(),
             )
-        })?),
-        // A person signed in gets a token minted for the webhook. They must be
-        // able to hold both capabilities it carries.
+        })?,
+        // A person signed in acts as one of their own tokens, as a webhook made
+        // with that token does: it delivers while the token is live and holds
+        // the capability, and ends when the token is revoked or the member is
+        // deactivated. Nothing is minted.
         Some(Extension(session)) => {
-            for needed in [WORKSPACE_ADMIN, WORKSPACE_READ] {
-                if !super::member::session_holds_or_may_mint(&state, session, needed).await? {
-                    return Err(ApiError::Forbidden(format!(
-                        "a webhook needs {needed}, which this sign-in cannot hold"
-                    )));
-                }
-            }
-            crate::webhooks::Authority::MintFor(session.member_id)
+            own_webhook_token(&state, workspace_id, session.member_id).await?
         }
     };
-    crate::webhooks::create(&state, &auth, workspace_id, body, authority).await
+    crate::webhooks::create(&state, &auth, workspace_id, body, created_by_token).await
 }
 
 /// `DELETE /ui/api/workspaces/:wid/webhooks/:whid`.
@@ -151,5 +179,5 @@ pub async fn ui_revoke_webhook(
         Act::Revoke,
     )
     .await?;
-    crate::webhooks::revoke(&state, &auth, workspace_id, WebhookSubscriptionId(whid)).await
+    crate::webhooks::revoke(&state, workspace_id, WebhookSubscriptionId(whid)).await
 }

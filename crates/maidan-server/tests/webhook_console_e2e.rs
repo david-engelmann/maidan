@@ -508,17 +508,76 @@ impl Env {
     }
 }
 
+impl Env {
+    /// Another live token for `member`, optionally expiring.
+    async fn extra_token(
+        &self,
+        workspace: WorkspaceId,
+        member: MemberId,
+        capabilities: &[&str],
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> maidan_types::ApiToken {
+        let secret = TokenSecret::generate();
+        self.store
+            .create_api_token(NewApiToken {
+                workspace_id: workspace,
+                member_id: member,
+                app_installation_id: None,
+                token_hash: hash_secret(secret.as_str()),
+                label: None,
+                capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+                expires_at,
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn general_thread(&self, workspace: WorkspaceId) -> maidan_types::ThreadId {
+        let channel = self
+            .store
+            .create_channel(maidan_types::NewChannel {
+                workspace_id: workspace,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap()
+            .id;
+        self.store
+            .create_thread(maidan_types::NewThread {
+                channel_id: channel,
+                parent_thread_id: None,
+                title: Some("work".into()),
+                description: None,
+                created_by: None,
+            })
+            .await
+            .unwrap()
+            .id
+    }
+
+    async fn say(&self, thread: maidan_types::ThreadId, poster: &str, text: &str) {
+        let res = self
+            .client
+            .post(format!("{}/threads/{}/messages", self.base, thread.0))
+            .bearer_auth(poster)
+            .json(&json!({ "body": text }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+    }
+}
+
+const ADMIN_CAPS: &[&str] = &["workspace:admin", "workspace:read", "workspace:write"];
+
 #[tokio::test]
-async fn a_webhook_made_in_the_console_delivers_and_its_revoke_takes_its_own_token_with_it() {
+async fn a_webhook_made_in_the_console_acts_as_the_members_own_token_and_delivers() {
     let env = spawn(true).await;
     let ws = env.workspace("acme").await;
-    let (admin, admin_token) = env
-        .member_with_token(
-            ws,
-            "admin",
-            MemberKind::Human,
-            &["workspace:admin", "workspace:read", "workspace:write"],
-        )
+    let (admin, _) = env
+        .member_with_token(ws, "admin", MemberKind::Human, ADMIN_CAPS)
         .await;
     let (_, poster) = env
         .member_with_caps(
@@ -528,29 +587,35 @@ async fn a_webhook_made_in_the_console_delivers_and_its_revoke_takes_its_own_tok
             expand_set(AGENT_WORKER).unwrap(),
         )
         .await;
-    let channel = env
+    let thread = env.general_thread(ws).await;
+    let own = env
         .store
-        .create_channel(maidan_types::NewChannel {
-            workspace_id: ws,
-            name: "general".into(),
-            topic: None,
-            private: false,
-        })
+        .list_api_tokens_for_member(ws, admin)
         .await
         .unwrap()
-        .id;
-    let thread = env
+        .remove(0);
+    // Two more qualifying tokens, both expiring: the one that never expires
+    // is still the one the webhook acts as.
+    env.extra_token(
+        ws,
+        admin,
+        ADMIN_CAPS,
+        Some(chrono::Utc::now() + chrono::Duration::days(30)),
+    )
+    .await;
+    env.extra_token(
+        ws,
+        admin,
+        ADMIN_CAPS,
+        Some(chrono::Utc::now() + chrono::Duration::days(90)),
+    )
+    .await;
+    let tokens_before = env
         .store
-        .create_thread(maidan_types::NewThread {
-            channel_id: channel,
-            parent_thread_id: None,
-            title: Some("work".into()),
-            description: None,
-            created_by: None,
-        })
+        .list_api_tokens_for_member(ws, admin)
         .await
         .unwrap()
-        .id;
+        .len();
     let person = env.signed_in(ws, admin).await;
     let base = format!("/ui/api/workspaces/{}/webhooks", ws.0);
 
@@ -563,40 +628,25 @@ async fn a_webhook_made_in_the_console_delivers_and_its_revoke_takes_its_own_tok
         )
         .await;
     assert_eq!(status, StatusCode::CREATED, "{minted}");
-    let id = minted["webhook"]["id"].as_str().unwrap().to_string();
+    let id = maidan_types::WebhookSubscriptionId(
+        minted["webhook"]["id"].as_str().unwrap().parse().unwrap(),
+    );
 
-    // A token was minted for it, in the person's own list, with a label that
-    // says what it is and exactly the two capabilities the webhook needs.
-    let authority: Vec<_> = env
-        .store
-        .list_api_tokens_for_member(ws, admin)
-        .await
-        .unwrap()
-        .into_iter()
-        .filter(|t| {
-            t.label
-                .as_deref()
-                .is_some_and(|l| l.starts_with("Webhook to "))
-        })
-        .collect();
-    assert_eq!(authority.len(), 1, "{authority:?}");
-    let authority = authority.into_iter().next().unwrap();
-    assert!(authority.label.as_deref().unwrap().contains(&id));
-    let mut caps = authority.capabilities.clone();
-    caps.sort();
-    assert_eq!(caps, ["workspace:admin", "workspace:read"]);
-    assert!(authority.revoked_at.is_none());
+    // It records the member's own token, and mints nothing.
+    let held = env.store.get_webhook_subscription(id).await.unwrap();
+    assert_eq!(held.created_by_token, Some(own.id));
+    assert_eq!(
+        env.store
+            .list_api_tokens_for_member(ws, admin)
+            .await
+            .unwrap()
+            .len(),
+        tokens_before,
+        "creating a webhook made a token"
+    );
 
     // It delivers, and is still there afterwards.
-    let res = env
-        .client
-        .post(format!("{}/threads/{}/messages", env.base, thread.0))
-        .bearer_auth(&poster)
-        .json(&json!({ "body": "hello" }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::CREATED);
+    env.say(thread, &poster, "hello").await;
     assert!(
         env.delivered("console", "message_posted").await,
         "a webhook made in the console never delivered"
@@ -604,64 +654,129 @@ async fn a_webhook_made_in_the_console_delivers_and_its_revoke_takes_its_own_tok
     let (_, listed) = env
         .call(reqwest::Method::GET, &base, &person.cookie, None)
         .await;
-    assert_eq!(
-        listed.as_array().unwrap().len(),
-        1,
-        "it was revoked on its first event: {listed}"
-    );
+    assert_eq!(listed.as_array().unwrap().len(), 1, "{listed}");
+}
 
-    // A webhook made with the person's own token is not tied to a minted one.
+#[tokio::test]
+async fn revoking_the_token_a_console_webhook_acts_as_ends_it_and_leaves_the_person_no_extra_ability(
+) {
+    let env = spawn(true).await;
+    let ws = env.workspace("acme").await;
+    let (admin, _) = env
+        .member_with_token(ws, "admin", MemberKind::Human, ADMIN_CAPS)
+        .await;
+    let (_, poster) = env
+        .member_with_caps(
+            ws,
+            "poster",
+            MemberKind::Agent,
+            expand_set(AGENT_WORKER).unwrap(),
+        )
+        .await;
+    let thread = env.general_thread(ws).await;
+    let person = env.signed_in(ws, admin).await;
+    let base = format!("/ui/api/workspaces/{}/webhooks", ws.0);
     let own = env
-        .client
-        .post(format!("{}/workspaces/{}/webhooks", env.base, ws.0))
-        .bearer_auth(&admin_token)
-        .json(&json!({ "url": format!("{}/own", env.hooks), "event_kinds": ["message_posted"] }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(own.status(), StatusCode::CREATED);
-    let own: Value = own.json().await.unwrap();
-    let own_id = own["webhook"]["id"].as_str().unwrap().to_string();
-
-    // Revoking from the console ends the webhook and the token minted for it.
-    let (status, _) = env
-        .call(
-            reqwest::Method::DELETE,
-            &format!("{base}/{id}"),
-            &person.cookie,
-            None,
-        )
-        .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let after = env.store.get_api_token(authority.id).await.unwrap();
-    assert!(
-        after.revoked_at.is_some(),
-        "the minted token outlived its webhook"
-    );
-
-    // Revoking the one made with the person's own token leaves that token.
-    let (status, _) = env
-        .call(
-            reqwest::Method::DELETE,
-            &format!("{base}/{own_id}"),
-            &person.cookie,
-            None,
-        )
-        .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let tokens = env
         .store
         .list_api_tokens_for_member(ws, admin)
         .await
-        .unwrap();
-    assert!(
-        tokens
-            .iter()
-            .any(|t| t.label.is_none() && t.revoked_at.is_none()),
-        "the person's own token was revoked: {tokens:?}"
+        .unwrap()
+        .remove(0);
+    let (status, minted) = env
+        .call(
+            reqwest::Method::POST,
+            &base,
+            &person.cookie,
+            Some(
+                json!({ "url": format!("{}/ends", env.hooks), "event_kinds": ["message_posted"] }),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{minted}");
+    let id = maidan_types::WebhookSubscriptionId(
+        minted["webhook"]["id"].as_str().unwrap().parse().unwrap(),
     );
-    let (_, listed) = env
+    env.say(thread, &poster, "first").await;
+    assert!(env.delivered("ends", "message_posted").await);
+
+    // The token goes. The person's admin standing goes with it, since nothing
+    // else holds it for them: no token was made for the webhook.
+    env.store.revoke_api_token(own.id).await.unwrap();
+    assert_eq!(
+        env.store
+            .list_api_tokens_for_member(ws, admin)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a token was made for the webhook"
+    );
+    let (status, _) = env
         .call(reqwest::Method::GET, &base, &person.cookie, None)
         .await;
-    assert_eq!(listed, json!([]));
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // The next matching event finds its authority gone and ends the webhook.
+    env.say(thread, &poster, "second").await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let held = env.store.get_webhook_subscription(id).await.unwrap();
+        if held.subscription.revoked_at.is_some() {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the webhook outlived its token"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_session_whose_member_holds_no_token_with_both_capabilities_gets_a_403_and_nothing_is_stored(
+) {
+    let env = spawn(true).await;
+    let ws = env.workspace("acme").await;
+    // Admin on one token and read on another, but never both on one.
+    let (admin, _) = env
+        .member_with_token(ws, "admin", MemberKind::Human, &["workspace:admin"])
+        .await;
+    env.extra_token(ws, admin, &["workspace:read"], None).await;
+    let person = env.signed_in(ws, admin).await;
+    let base = format!("/ui/api/workspaces/{}/webhooks", ws.0);
+    let tokens_before = env
+        .store
+        .list_api_tokens_for_member(ws, admin)
+        .await
+        .unwrap()
+        .len();
+
+    let (status, problem) = env
+        .call(
+            reqwest::Method::POST,
+            &base,
+            &person.cookie,
+            Some(new_hook()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{problem}");
+    assert_eq!(
+        problem["detail"],
+        "a webhook acts as one of your tokens, and you hold none with workspace:admin and workspace:read"
+    );
+    assert!(env
+        .store
+        .list_webhook_subscriptions(ws)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        env.store
+            .list_api_tokens_for_member(ws, admin)
+            .await
+            .unwrap()
+            .len(),
+        tokens_before,
+        "a refused create made a token"
+    );
 }

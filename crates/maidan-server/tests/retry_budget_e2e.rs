@@ -134,7 +134,6 @@ async fn webhook_suite(backend: &Backend) {
     let creator = maidan_server::test_support::registrar(store, ws).await;
     let sub = store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: None,
             workspace_id: ws,
             url: format!("http://{addr}/hook"),
             label: None,

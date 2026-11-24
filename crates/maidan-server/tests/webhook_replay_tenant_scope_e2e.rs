@@ -128,7 +128,6 @@ async fn tenant(store: &dyn Store, name: &str) -> (WorkspaceId, String) {
 async fn subscription(store: &dyn Store, ws: WorkspaceId) -> WebhookSubscriptionId {
     store
         .create_webhook_subscription(NewWebhookSubscription {
-            id: None,
             workspace_id: ws,
             url: "http://127.0.0.1:9/hook".into(),
             label: None,
