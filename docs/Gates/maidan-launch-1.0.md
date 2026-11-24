@@ -24,9 +24,10 @@ no-go rows of the runbook, are the maintainer's.
 | Validation record | [`listings/validation/v478.md`](../../listings/validation/v478.md), with the same gate rehearsed on a local Postgres |
 
 `v478.0.0` is `v474.0.0` with a workspace that connects its own GitHub, Slack
-and Linear and receives its own inbound events, and with the cross-workspace
-reads of federation peers, the server's own credentials, live streams, share
-tickets, digests and federated mentions closed. It adds routes and no MCP tool.
+and Linear and receives its own inbound events, and with what a federation
+peer, the server's own credentials, a live stream, a share ticket, a digest and
+a federated mention can reach held to what the caller may read. It adds routes
+and no MCP tool.
 
 The first run against maidan.world, on `v467.0.0` on 2026-11-20, failed: 73
 passed, 3 failed. On Postgres a workspace that had done work could not be
