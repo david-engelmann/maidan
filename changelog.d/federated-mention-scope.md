@@ -1,4 +1,0 @@
-### A federated mention no longer notifies a member of another workspace
-
-- **Fixed:** the notification router wrote an inbox row, and queued the email and web push, for the member a `mention_recorded` event named without checking that the member belongs to the event's workspace. A federated event is remapped into the receiving workspace with its member ids as the peer wrote them, so a peer registered in one workspace could notify a member of another workspace on the same server about content that member cannot read. The router now skips a mentioned member who is not live in the event's workspace. A local mention was already refused at write time.
-- **Fixed:** `docs/Capability Map.md`, `docs/Integration Reference.md` and the threat model now say that `federation:admin` lets its holder export the workspace's whole event log through a peer it registers, so it is granted like `token:admin`.
