@@ -255,46 +255,56 @@ pub async fn mark_checked(
 }
 
 /// Stamp a CI event on each open tracked pull request `pull_number` of
-/// `repo`, in every workspace. A later stamp only moves it forward, so a
+/// `repo`, in the workspaces `scope` reaches. A later stamp only moves it forward, so a
 /// redelivered or late event cannot hide one that arrived after it.
 pub async fn mark_ci_event(
     pool: &PgPool,
+    scope: maidan_types::InboundScope,
     repo: &str,
     pull_number: i64,
     at: DateTime<Utc>,
 ) -> Result<u64, StoreError> {
-    let done = sqlx::query(
+    let sql = format!(
         "UPDATE maidan_change_pulls
          SET ci_event_at = GREATEST(COALESCE(ci_event_at, $3), $3)
-         WHERE repo = $1 AND pull_number = $2 AND closed_at IS NULL",
-    )
-    .bind(repo.to_ascii_lowercase())
-    .bind(pull_number)
-    .bind(at)
-    .execute(pool)
-    .await?;
-    Ok(done.rows_affected())
+         WHERE repo = $1 AND pull_number = $2 AND closed_at IS NULL AND {}",
+        crate::inbound_scope::clause(scope, "workspace_id", "$4")
+    );
+    let query = sqlx::query(&sql)
+        .bind(repo.to_ascii_lowercase())
+        .bind(pull_number)
+        .bind(at);
+    let query = match crate::inbound_scope::bind(scope) {
+        crate::inbound_scope::Bind::Workspace(id) => query.bind(id),
+        crate::inbound_scope::Bind::Secret(name) => query.bind(name),
+    };
+    Ok(query.execute(pool).await?.rows_affected())
 }
 
 /// Stamp a CI event on each open tracked pull request of `repo` last read
-/// at `head_sha`, in every workspace.
+/// at `head_sha`, in the workspaces `scope` reaches.
 pub async fn mark_ci_event_at_head(
     pool: &PgPool,
+    scope: maidan_types::InboundScope,
     repo: &str,
     head_sha: &str,
     at: DateTime<Utc>,
 ) -> Result<u64, StoreError> {
-    let done = sqlx::query(
+    let sql = format!(
         "UPDATE maidan_change_pulls
          SET ci_event_at = GREATEST(COALESCE(ci_event_at, $3), $3)
-         WHERE repo = $1 AND ci_read_head = $2 AND closed_at IS NULL",
-    )
-    .bind(repo.to_ascii_lowercase())
-    .bind(head_sha.to_ascii_lowercase())
-    .bind(at)
-    .execute(pool)
-    .await?;
-    Ok(done.rows_affected())
+         WHERE repo = $1 AND ci_read_head = $2 AND closed_at IS NULL AND {}",
+        crate::inbound_scope::clause(scope, "workspace_id", "$4")
+    );
+    let query = sqlx::query(&sql)
+        .bind(repo.to_ascii_lowercase())
+        .bind(head_sha.to_ascii_lowercase())
+        .bind(at);
+    let query = match crate::inbound_scope::bind(scope) {
+        crate::inbound_scope::Bind::Workspace(id) => query.bind(id),
+        crate::inbound_scope::Bind::Secret(name) => query.bind(name),
+    };
+    Ok(query.execute(pool).await?.rows_affected())
 }
 
 /// Record the sweep's read of a tracked pull request's CI at `head_sha`.

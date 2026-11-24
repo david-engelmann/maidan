@@ -11,7 +11,7 @@ use maidan_auth::{
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
-    inject_type, Event, EventKind, NewWebhookSubscription, WebhookSubscription,
+    inject_type, ApiTokenId, Event, EventKind, NewWebhookSubscription, WebhookSubscription,
     WebhookSubscriptionId, WorkspaceId, ROOM_LSN_HEADER,
 };
 use serde::Serialize;
@@ -131,13 +131,34 @@ pub async fn create_webhook(
     // URL (SEC-009).
     cap(&auth, WORKSPACE_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    // A subscription acts as a token, and a bearer always presents one.
+    let token = auth.token_id().ok_or_else(|| {
+        ApiError::Forbidden(
+            "a webhook is made with a token, which this caller does not hold".into(),
+        )
+    })?;
+    create(&state, &auth, workspace_id, body, token).await
+}
+
+/// Create the subscription, acting as `created_by_token`: it delivers while
+/// that token is live and holds the capability, and ends when the token does
+/// or its member is deactivated. The caller has already been allowed to.
+pub(crate) async fn create(
+    state: &AppState,
+    auth: &AuthContext,
+    workspace_id: WorkspaceId,
+    body: CreateWebhook,
+    created_by_token: ApiTokenId,
+) -> ApiResult<(StatusCode, Json<MintWebhookResponse>)> {
     validate_webhook_url(&body.url)?;
     let event_kinds = parse_event_kinds(&body.event_kinds)?;
 
     let secret = TokenSecret::generate();
-    let key = state.webhooks.encryption_key.as_deref().ok_or_else(|| {
-        ApiError::Internal("FEDERATION_ENCRYPTION_KEY must be set to create webhooks".into())
-    })?;
+    let key = state
+        .webhooks
+        .encryption_key
+        .as_deref()
+        .ok_or_else(|| ApiError::needs_encryption_key("a webhook's signing secret"))?;
     let secret_ciphertext =
         encrypt_peer_secret(secret.as_str(), key).map_err(|e| ApiError::Internal(e.to_string()))?;
 
@@ -150,12 +171,12 @@ pub async fn create_webhook(
             event_kinds,
             secret_ciphertext,
             // The subscription delivers as this token, and stops when it does.
-            created_by_token: auth.token_id(),
+            created_by_token: Some(created_by_token),
         })
         .await?;
     crate::registration_owner::record_registration(
-        &state,
-        &auth,
+        state,
+        auth,
         workspace_id,
         "webhook",
         subscription.id.0,
@@ -185,6 +206,14 @@ pub async fn list_webhooks(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
+    list(&state, workspace_id).await
+}
+
+/// The workspace's webhooks. The caller has already been allowed to.
+pub(crate) async fn list(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
     Ok(Json(subs.into_iter().map(WebhookResponse::from).collect()))
 }
@@ -267,6 +296,16 @@ pub async fn revoke_webhook(
     let webhook_id = WebhookSubscriptionId(webhook_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
+    revoke(&state, workspace_id, webhook_id).await
+}
+
+/// Revoke the subscription. The token it acted as is the person's own and is
+/// left alone. The caller has already been allowed to.
+pub(crate) async fn revoke(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    webhook_id: WebhookSubscriptionId,
+) -> ApiResult<StatusCode> {
     state
         .store
         .revoke_webhook_subscription(workspace_id, webhook_id)

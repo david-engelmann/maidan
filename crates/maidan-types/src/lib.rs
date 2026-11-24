@@ -9,6 +9,7 @@
 pub mod cancel;
 pub mod change_metrics;
 pub mod claim_release;
+pub mod connection;
 pub mod content_seal;
 pub mod credits;
 pub mod cursor;
@@ -66,6 +67,7 @@ pub mod workspace_invite;
 pub use cancel::*;
 pub use change_metrics::*;
 pub use claim_release::*;
+pub use connection::*;
 pub use content_seal::*;
 pub use credits::*;
 pub use cursor::*;

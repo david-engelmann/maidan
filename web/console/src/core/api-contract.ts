@@ -8,6 +8,7 @@ import type { Message, GroupDm, Edit, VoteRow } from "./threads";
 import type { Thread, Channel, Transition } from "./board";
 import type { Notification, NotificationPref, Depth, SlashCommand, Schedule, Peer, AuditEvent } from "./tools";
 import type { EgressTarget, ResultDelivery } from "./deliveries";
+import type { MintedWebhook, Webhook } from "./webhooks";
 
 type Fits<Server, Console> = [Server] extends [Console] ? true : false;
 const fits = <T extends true>(): T | undefined => undefined;
@@ -30,4 +31,6 @@ export const contract = [
   fits<Fits<Api.AuditEvent, AuditEvent>>(),
   fits<Fits<Api.ResultDelivery, ResultDelivery>>(),
   fits<Fits<Api.AllowedEgressTarget, EgressTarget>>(),
+  fits<Fits<Api.WebhookResponse, Webhook>>(),
+  fits<Fits<Api.MintWebhookResponse, MintedWebhook>>(),
 ];

@@ -491,6 +491,7 @@ pub fn list_webhooks() {}
         (status = 201, body = MintWebhookResponse),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
+        (status = 503, description = "This instance has no FEDERATION_ENCRYPTION_KEY to keep the signing secret with", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn create_webhook() {}

@@ -232,6 +232,7 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template
             .replace("{wid}", &f.workspace)
             .replace("{iid}", &f.workspace)
+            .replace("{whid}", &f.workspace)
             .replace("{cid}", &f.channel)
             .replace("{tid}", &f.thread)
             .replace("{mid}", &f.message);
@@ -854,6 +855,9 @@ fn apply_route_defaults(
     // default fallthrough below.
     if path.contains("/oauth-grants/") && method == "POST" {
         return b.json(&json!({}));
+    }
+    if path.contains("/connections/") && method == "PUT" {
+        return b.json(&json!({ "token": "capability-matrix-token" }));
     }
     // A valid selector, so the extractor passes and it is `cap()` that answers.
     if path.contains("/egress-targets") && method == "POST" {

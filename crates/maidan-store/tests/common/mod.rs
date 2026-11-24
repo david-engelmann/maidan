@@ -689,7 +689,9 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
         })
         .await
         .expect("a slack link");
-    let stolen = store
+    // Another workspace links the same channel for itself: neither takes the
+    // other's, and neither learns of it.
+    store
         .link_slack_channel(NewSlackChannelLink {
             slack_channel_id: "CX1".into(),
             workspace_id: b.ws,
@@ -697,15 +699,21 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
             thread_id: b.thread,
             member_id: b.bot,
         })
-        .await;
-    assert!(matches!(stolen, Err(StoreError::Conflict(_))), "{stolen:?}");
+        .await
+        .expect("b links the same channel for itself");
     let kept = store
-        .get_slack_channel_link("CX1")
+        .get_slack_channel_link(a.ws, "CX1")
         .await
         .expect("get")
         .expect("some");
     assert_eq!(kept.workspace_id, a.ws);
     assert_eq!(kept.thread_id, a.thread);
+    let theirs = store
+        .get_slack_channel_link(b.ws, "CX1")
+        .await
+        .expect("get")
+        .expect("some");
+    assert_eq!(theirs.thread_id, b.thread);
     store
         .link_slack_channel(NewSlackChannelLink {
             slack_channel_id: "CX1".into(),
@@ -728,7 +736,7 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
         })
         .await
         .expect("a github link");
-    let stolen = store
+    store
         .link_github_issue(NewGithubIssueLink {
             repo: "o/r".into(),
             issue_number: 7,
@@ -737,15 +745,21 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
             thread_id: b.thread,
             member_id: b.bot,
         })
-        .await;
-    assert!(matches!(stolen, Err(StoreError::Conflict(_))), "{stolen:?}");
+        .await
+        .expect("b links the same issue for itself");
     let kept = store
-        .get_github_issue_link("o/r", 7)
+        .get_github_issue_link(a.ws, "o/r", 7)
         .await
         .expect("get")
         .expect("some");
     assert_eq!(kept.workspace_id, a.ws);
     assert_eq!(kept.thread_id, a.thread);
+    let theirs = store
+        .get_github_issue_link(b.ws, "o/r", 7)
+        .await
+        .expect("get")
+        .expect("some");
+    assert_eq!(theirs.thread_id, b.thread);
     store
         .link_github_issue(NewGithubIssueLink {
             repo: "o/r".into(),

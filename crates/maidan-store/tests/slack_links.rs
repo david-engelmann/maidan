@@ -58,7 +58,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Unlinked to start.
     assert!(store
-        .get_slack_channel_link("C123")
+        .get_slack_channel_link(ws.id, "C123")
         .await
         .expect("get none")
         .is_none());
@@ -77,7 +77,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(link.slack_channel_id, "C123");
     assert_eq!(link.thread_id, thread.id);
     let got = store
-        .get_slack_channel_link("C123")
+        .get_slack_channel_link(ws.id, "C123")
         .await
         .expect("get")
         .expect("some");
@@ -114,7 +114,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("relink");
     assert_eq!(
         store
-            .get_slack_channel_link("C123")
+            .get_slack_channel_link(ws.id, "C123")
             .await
             .expect("get2")
             .expect("some2")
@@ -134,32 +134,32 @@ async fn run_suite(store: &dyn Store) {
     // Retry-then-disable: a broken link is turned off, and only the first
     // failure gets to announce it. Re-linking is the re-enable path.
     assert!(store
-        .get_slack_channel_link("C123")
+        .get_slack_channel_link(ws.id, "C123")
         .await
         .expect("get3")
         .expect("some3")
         .disabled_at
         .is_none());
     assert!(store
-        .disable_slack_channel_link("C123")
+        .disable_slack_channel_link(ws.id, "C123")
         .await
         .expect("disable"));
     let disabled = store
-        .get_slack_channel_link("C123")
+        .get_slack_channel_link(ws.id, "C123")
         .await
         .expect("get4")
         .expect("some4");
     let disabled_at = disabled.disabled_at.expect("disabled");
     assert!(
         !store
-            .disable_slack_channel_link("C123")
+            .disable_slack_channel_link(ws.id, "C123")
             .await
             .expect("disable again"),
         "a second failure does not re-announce"
     );
     assert_eq!(
         store
-            .get_slack_channel_link("C123")
+            .get_slack_channel_link(ws.id, "C123")
             .await
             .expect("get5")
             .expect("some5")
@@ -179,7 +179,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("re-link");
     assert!(
         store
-            .get_slack_channel_link("C123")
+            .get_slack_channel_link(ws.id, "C123")
             .await
             .expect("get6")
             .expect("some6")
@@ -189,16 +189,19 @@ async fn run_suite(store: &dyn Store) {
     );
 
     // Unlink.
-    assert!(store.unlink_slack_channel("C123").await.expect("unlink"));
+    assert!(store
+        .unlink_slack_channel(ws.id, "C123")
+        .await
+        .expect("unlink"));
     assert!(
         !store
-            .unlink_slack_channel("C123")
+            .unlink_slack_channel(ws.id, "C123")
             .await
             .expect("unlink again"),
         "second unlink removes nothing"
     );
     assert!(store
-        .get_slack_channel_link("C123")
+        .get_slack_channel_link(ws.id, "C123")
         .await
         .expect("get after unlink")
         .is_none());

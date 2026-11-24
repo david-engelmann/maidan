@@ -1170,6 +1170,14 @@ pub fn router(state: AppState) -> Router {
             delete(routes::revoke_egress_target),
         )
         .route(
+            "/workspaces/{wid}/connections",
+            no_store(get(routes::list_connections)),
+        )
+        .route(
+            "/workspaces/{wid}/connections/{surface}",
+            put(routes::set_connection).merge(delete(routes::clear_connection)),
+        )
+        .route(
             "/workspaces/{wid}/fsm-hooks",
             no_store(post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks))),
         )
@@ -1956,6 +1964,23 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/{wid}/egress-targets/{tid}",
             delete(routes::ui_revoke_egress_target),
         )
+        // Outbound webhooks in the console, the same bar as the bearer routes.
+        .route(
+            "/ui/api/workspaces/{wid}/webhooks",
+            no_store(post(routes::ui_create_webhook).merge(get(routes::ui_list_webhooks))),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/webhooks/{whid}",
+            delete(routes::ui_revoke_webhook),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/connections",
+            no_store(get(routes::ui_list_connections)),
+        )
+        .route(
+            "/ui/api/workspaces/{wid}/connections/{surface}",
+            put(routes::ui_set_connection).merge(delete(routes::ui_clear_connection)),
+        )
         .route(
             "/ui/api/operator/reindex-embeddings",
             post(reindex_ops::start_reindex_embeddings),
@@ -2083,6 +2108,17 @@ pub fn router(state: AppState) -> Router {
         // GitHub projector ingress: unauthed — GitHub authenticates via its
         // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
+        // A workspace's own inbound URLs: unauthed too, verified in-handler with
+        // the secret the workspace stored when it connected the surface. One
+        // fixed 404 for an unknown workspace, no connection and no secret.
+        .route(
+            "/workspaces/{wid}/connections/github/webhook",
+            post(github::workspace_github_events),
+        )
+        .route(
+            "/workspaces/{wid}/connections/slack/events",
+            post(slack::workspace_slack_events),
+        )
         .route(
             "/integrations/deploys/events",
             post(crate::deploy_ingest::deploy_events),

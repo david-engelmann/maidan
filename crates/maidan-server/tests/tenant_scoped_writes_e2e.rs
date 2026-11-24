@@ -71,10 +71,6 @@ async fn mcp_call(h: &Harness, bearer: &str, name: &str, arguments: Value) -> Va
     .unwrap()
 }
 
-fn refused(res: &Value) -> bool {
-    res.get("error").is_some() || res["result"]["isError"] == true
-}
-
 #[tokio::test]
 async fn another_tenants_admin_cannot_revoke_by_id_via_rest_or_mcp() {
     let h = spawn().await;
@@ -169,7 +165,7 @@ async fn another_tenants_admin_cannot_revoke_by_id_via_rest_or_mcp() {
 }
 
 #[tokio::test]
-async fn another_tenant_cannot_relink_a_slack_channel_or_github_issue() {
+async fn two_tenants_link_the_same_slack_channel_and_github_issue_each_for_itself() {
     let h = spawn().await;
     let a = tenant(&h, "tenant-a").await;
     let b = tenant(&h, "tenant-b").await;
@@ -196,6 +192,8 @@ async fn another_tenant_cannot_relink_a_slack_channel_or_github_issue() {
             .await;
         assert_eq!(res.status(), 201, "{route}: A may re-link its own");
     }
+    // B links the same channel and issue: it neither takes A's nor is told A
+    // has them.
     for (route, body) in [("slack-links", slack(&b)), ("github-links", github(&b))] {
         let res = h
             .send(
@@ -205,34 +203,45 @@ async fn another_tenant_cannot_relink_a_slack_channel_or_github_issue() {
                 Some(body),
             )
             .await;
-        assert_eq!(res.status(), 409, "{route}");
-    }
-    for (tool, args) in [
-        ("link_slack_channel", slack(&b)),
-        ("link_github_issue", github(&b)),
-    ] {
-        let res = mcp_call(&h, &b.bearer, tool, args).await;
-        assert!(refused(&res), "{tool}: {res}");
-        assert!(
-            res.to_string().contains("another workspace"),
-            "{tool}: {res}"
-        );
+        assert_eq!(res.status(), 201, "{route}");
     }
 
     let slack_link = h
         .store
-        .get_slack_channel_link("CX1")
+        .get_slack_channel_link(a.ws, "CX1")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(slack_link.workspace_id, a.ws);
     assert_eq!(slack_link.thread_id.0, a.thread);
     let gh_link = h
         .store
-        .get_github_issue_link("o/r", 7)
+        .get_github_issue_link(a.ws, "o/r", 7)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(gh_link.workspace_id, a.ws);
     assert_eq!(gh_link.thread_id.0, a.thread);
+    let theirs = h
+        .store
+        .get_slack_channel_link(b.ws, "CX1")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(theirs.thread_id.0, b.thread);
+
+    // One tenant's unlink leaves the other's link in place.
+    let res = h
+        .send(
+            Method::DELETE,
+            &format!("/workspaces/{}/slack-links/CX1", a.ws.0),
+            &a.bearer,
+            None,
+        )
+        .await;
+    assert_eq!(res.status(), 204);
+    assert!(h
+        .store
+        .get_slack_channel_link(b.ws, "CX1")
+        .await
+        .unwrap()
+        .is_some());
 }

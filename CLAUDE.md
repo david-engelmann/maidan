@@ -383,6 +383,14 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   The erase deletes what names a member that way first (read from the
   catalog); a key like that on any other table fails `workspace_erase`'s
   Postgres test, which lists the parents the erase handles.
+- **A send or read for a workspace asks `AppState::github_for`, `slack_for` or
+  `linear_for`,** never `state.github_sender`, `slack_sender` or `linear_sender`.
+  Those fields are the server's own credentials, which serve only a workspace
+  its operator opened, and a workspace that stored its own connection
+  (`crates/maidan-server/src/connections.rs`) always uses it. Only a send that
+  is for the operator and no workspace (ops alerts) reads them directly. Tests
+  swap the client factory with `attach_connection_factory`
+  (`test_support::MockConnections`).
 - **A module for one backend only** goes in `POSTGRES_ONLY_MODULES` or
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.
 - **A new column read by a shared row mapper** must be added to every `SELECT`

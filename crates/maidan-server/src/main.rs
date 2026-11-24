@@ -945,13 +945,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     }
 
     // Background projector-egress worker: drains the durable egress queue with
-    // retry/backoff + dead-lettering. Runs whenever a projector sender is
-    // configured — which is exactly when the projectors enqueue, so a
-    // deployment without one neither queues nor drains.
-    if state.slack_sender.is_some()
-        || state.github_sender.is_some()
-        || state.linear_sender.is_some()
-    {
+    // retry/backoff + dead-lettering. Runs whenever something could send: a
+    // sender of the server's own, or the key that opens the connections
+    // workspaces store. A deployment with neither neither queues nor drains.
+    if state.may_send_anywhere() {
         let egress_state = state.clone();
         let egress_cfg = maidan_server::egress_worker::config();
         tokio::spawn(async move {
@@ -966,6 +963,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.mcp.set_slash_dispatcher(std::sync::Arc::new(
         maidan_server::slash_commands::ServerSlashDispatcher::new(state.clone()),
     ));
+    // Same reason: it resolves each workspace's GitHub sender through a copy
+    // of the state.
+    state.attach_pull_refresher();
     // The at-rest encryption key powers `resolve_secret` over MCP, mirroring
     // the REST resolve; unset means the tool reports it's unavailable.
     if let Some(key) = state.federation.encryption_key.clone() {

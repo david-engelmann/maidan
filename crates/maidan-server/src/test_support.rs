@@ -286,3 +286,120 @@ pub async fn land_gate_advisor_stub() -> std::sync::Arc<crate::land_gate_advisor
         .expect("stand-in advisor"),
     )
 }
+
+/// A [`crate::connections::ConnectionFactory`] for tests: it hands out the
+/// mock registered for a token instead of building a client that would call
+/// a provider, and answers an identity check from the accounts registered.
+/// A token with no account is refused, as a provider refuses a bad one.
+#[derive(Default)]
+pub struct MockConnections {
+    github: std::sync::Mutex<
+        std::collections::HashMap<String, std::sync::Arc<dyn crate::github::GithubSender>>,
+    >,
+    slack: std::sync::Mutex<
+        std::collections::HashMap<String, std::sync::Arc<dyn crate::slack::SlackSender>>,
+    >,
+    linear: std::sync::Mutex<
+        std::collections::HashMap<String, std::sync::Arc<dyn crate::linear::LinearSender>>,
+    >,
+    accounts: std::sync::Mutex<std::collections::HashMap<String, String>>,
+    /// Every `(surface, token)` the provider was asked about.
+    pub asked: std::sync::Mutex<Vec<(maidan_types::ConnectionSurface, String)>>,
+}
+
+impl MockConnections {
+    /// The provider knows `token`, as `account`.
+    pub fn account(&self, token: &str, account: &str) {
+        lock(&self.accounts).insert(token.into(), account.into());
+    }
+
+    pub fn github_for(&self, token: &str, sender: std::sync::Arc<dyn crate::github::GithubSender>) {
+        lock(&self.github).insert(token.into(), sender);
+    }
+
+    pub fn slack_for(&self, token: &str, sender: std::sync::Arc<dyn crate::slack::SlackSender>) {
+        lock(&self.slack).insert(token.into(), sender);
+    }
+
+    pub fn linear_for(&self, token: &str, sender: std::sync::Arc<dyn crate::linear::LinearSender>) {
+        lock(&self.linear).insert(token.into(), sender);
+    }
+}
+
+fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[async_trait::async_trait]
+impl crate::connections::ConnectionFactory for MockConnections {
+    fn github(&self, token: &str) -> std::sync::Arc<dyn crate::github::GithubSender> {
+        lock(&self.github)
+            .get(token)
+            .cloned()
+            .unwrap_or_else(|| panic!("no GitHub mock registered for this token"))
+    }
+
+    fn slack(&self, token: &str) -> std::sync::Arc<dyn crate::slack::SlackSender> {
+        lock(&self.slack)
+            .get(token)
+            .cloned()
+            .unwrap_or_else(|| panic!("no Slack mock registered for this token"))
+    }
+
+    fn linear(&self, token: &str) -> std::sync::Arc<dyn crate::linear::LinearSender> {
+        lock(&self.linear)
+            .get(token)
+            .cloned()
+            .unwrap_or_else(|| panic!("no Linear mock registered for this token"))
+    }
+
+    async fn verify(
+        &self,
+        surface: maidan_types::ConnectionSurface,
+        token: &str,
+    ) -> Result<String, crate::connections::VerifyError> {
+        lock(&self.asked).push((surface, token.to_string()));
+        lock(&self.accounts).get(token).cloned().ok_or_else(|| {
+            crate::connections::VerifyError::Refused("Bad credentials (mock)".into())
+        })
+    }
+}
+
+/// Store a workspace's own connection the way `PUT .../connections/{surface}`
+/// does, without the provider check: for a test that is about what a stored
+/// connection changes. The state must hold an encryption key.
+pub async fn connect(
+    state: &crate::state::AppState,
+    workspace_id: WorkspaceId,
+    by: MemberId,
+    surface: maidan_types::ConnectionSurface,
+    token: &str,
+    inbound_secret: Option<&str>,
+) {
+    let key = state
+        .federation
+        .encryption_key
+        .as_deref()
+        .unwrap_or_else(|| panic!("the state needs an encryption key to store a connection"));
+    let connection = crate::connections::StoredConnection {
+        token: token.into(),
+        account: "test-account".into(),
+        webhook_secret: inbound_secret.map(str::to_string),
+        signing_secret: inbound_secret.map(str::to_string),
+        connected_at: chrono::Utc::now(),
+    };
+    let value_ciphertext = maidan_auth::encrypt_peer_secret(&connection.to_plaintext(surface), key)
+        .unwrap_or_else(|e| panic!("encrypt the connection: {e}"));
+    state
+        .store
+        .create_secret(maidan_types::NewSecret {
+            workspace_id,
+            name: surface.secret_name().into(),
+            value_ciphertext,
+            created_by: by,
+        })
+        .await
+        .unwrap_or_else(|e| panic!("store the connection: {e}"));
+}

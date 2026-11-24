@@ -11,8 +11,9 @@ use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::github::{route_message_to_github, GithubError, GithubSender};
+use maidan_server::test_support::{connect, MockConnections};
 use maidan_server::web_push::{WebPushError, WebPushSender};
-use maidan_server::{egress_worker, mail_worker, notification_router, AppState};
+use maidan_server::{egress_worker, mail_worker, notification_router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
@@ -220,6 +221,8 @@ impl GithubSender for MockGithub {
     }
 }
 
+static CHANNELS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// A channel and a thread in it for the tenant, and what linking the thread
 /// to issue `issue` answered.
 async fn try_link(
@@ -230,7 +233,11 @@ async fn try_link(
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws,
-            name: "eng".into(),
+            // A tenant may try more than once, and a channel name is unique.
+            name: format!(
+                "eng-{}",
+                CHANNELS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            ),
             topic: None,
             private: false,
         })
@@ -282,18 +289,31 @@ async fn linked_message(
     (thread, m)
 }
 
-/// The projector sends with the server's own GitHub credential, which serves
-/// only a workspace its operator opened. A workspace opened by sign-up, open
-/// or invited, cannot link an issue, so it never has egress to send or to
-/// park. The operator's workspace is delivered past its allowance: only an
-/// open workspace is cut off.
+/// The projector sends with the credential that serves the workspace: the
+/// server's own for a workspace its operator opened, a workspace's own where
+/// it stored one. A signed-up workspace with no connection cannot link an
+/// issue, so it never has egress to send or to park, and the server's
+/// credential is never used for it. The operator's workspace is delivered past
+/// its allowance: only an open workspace is cut off, with or without its own
+/// connection.
 #[tokio::test]
-async fn only_the_operators_workspace_sends_through_the_servers_github_credential() {
+async fn each_workspace_sends_through_the_credential_that_serves_it() {
     let (mut state, store) = setup().await;
-    let github = Arc::new(MockGithub {
+    state.federation = FederationRuntime::new(true, Some(Arc::new([9u8; 32])));
+    let instance = Arc::new(MockGithub {
         sent: Mutex::new(Vec::new()),
     });
-    state.attach_github_sender(github.clone());
+    let invited_own = Arc::new(MockGithub {
+        sent: Mutex::new(Vec::new()),
+    });
+    let open_own = Arc::new(MockGithub {
+        sent: Mutex::new(Vec::new()),
+    });
+    let factory = Arc::new(MockConnections::default());
+    factory.github_for("invited-token", invited_own.clone());
+    factory.github_for("open-token", open_own.clone());
+    state.attach_github_sender(instance.clone());
+    state.attach_connection_factory(factory);
     let t = Tenants {
         open: signed_up(store.as_ref(), "ada", true).await,
         invited: signed_up(store.as_ref(), "cy", false).await,
@@ -303,20 +323,48 @@ async fn only_the_operators_workspace_sends_through_the_servers_github_credentia
         let (_, linked) = try_link(store.as_ref(), tenant, issue).await;
         assert!(
             matches!(linked, Err(maidan_store::StoreError::InvalidInput(_))),
-            "a signed-up workspace linked issue {issue}"
+            "a signed-up workspace with no connection linked issue {issue}"
         );
     }
+    connect(
+        &state,
+        t.invited.0,
+        t.invited.1,
+        ConnectionSurface::Github,
+        "invited-token",
+        None,
+    )
+    .await;
+    connect(
+        &state,
+        t.open.0,
+        t.open.1,
+        ConnectionSurface::Github,
+        "open-token",
+        None,
+    )
+    .await;
+    let (open_thread, open_message) = linked_message(store.as_ref(), t.open, 1).await;
+    let (invited_thread, invited_message) = linked_message(store.as_ref(), t.invited, 2).await;
     let (thread, m) = linked_message(store.as_ref(), t.ops, 3).await;
     for (ws, _) in [t.open, t.invited, t.ops] {
         past_every_allowance(store.as_ref(), ws).await;
     }
     maidan_server::usage_meters::refresh_cut_off(&state).await;
+    route_message_to_github(&state, 1, open_thread, &open_message).await;
+    route_message_to_github(&state, 2, invited_thread, &invited_message).await;
     route_message_to_github(&state, 3, thread, &m).await;
 
     let stats = egress_worker::sweep_once(&state).await;
-    assert_eq!(stats.sent, 1, "{stats:?}");
-    assert_eq!(stats.deferred + stats.dead, 0, "{stats:?}");
-    assert_eq!(*github.sent.lock().unwrap(), vec![3]);
+    assert_eq!(stats.sent, 2, "{stats:?}");
+    assert_eq!(
+        stats.deferred, 1,
+        "the open workspace is cut off: {stats:?}"
+    );
+    assert_eq!(stats.dead, 0, "{stats:?}");
+    assert_eq!(*instance.sent.lock().unwrap(), vec![3]);
+    assert_eq!(*invited_own.sent.lock().unwrap(), vec![2]);
+    assert!(open_own.sent.lock().unwrap().is_empty());
 }
 
 struct RecordingPush {
