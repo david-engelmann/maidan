@@ -268,7 +268,8 @@ const ROWS: &[Row] = &[
         "channel_id",
         IdCheck::Exempt(
             "the store requires the channel, its owner and its creator to be live in the \
-             ticket's workspace",
+             ticket's workspace, refuses the shared DM channel, and refuses a private channel \
+             unless the creator is a member of it",
         ),
         &["create_share_ticket"],
     ),
@@ -474,11 +475,16 @@ const ROWS: &[Row] = &[
             "a producer's opaque run label: the reads filter it to the caller's workspace and \
              the write lands on the guarded thread",
         ),
-        &[
-            "set_thread_lineage",
-            "list_run_threads",
-            "get_run_occupancy",
-        ],
+        &["set_thread_lineage", "list_run_threads"],
+    ),
+    row(
+        "parent_run_id",
+        IdCheck::Exempt(
+            "a producer's opaque run label: the count is confined to the caller's workspace and \
+             to threads the caller can read (`readable_thread` in the query), so a private \
+             channel or a DM the caller is not in adds nothing",
+        ),
+        &["get_run_occupancy"],
     ),
     row(
         "slack_channel_id",

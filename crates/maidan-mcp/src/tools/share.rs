@@ -173,6 +173,14 @@ mod tests {
             })
             .await
             .unwrap();
+        store
+            .add_channel_member(
+                channel.id,
+                owner.id,
+                maidan_types::ChannelMemberRole::Member,
+            )
+            .await
+            .unwrap();
         let sha = "b".repeat(64);
         store
             .upsert_artifact(NewArtifact {

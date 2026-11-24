@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Duration, Utc};
-use maidan_types::{NewShareTicket, SHARE_TICKET_MAX_ARTIFACTS, SHARE_TICKET_MAX_TTL_SECS};
+use maidan_types::{
+    NewShareTicket, DM_CHANNEL_NAME, SHARE_TICKET_MAX_ARTIFACTS, SHARE_TICKET_MAX_TTL_SECS,
+};
 
 use crate::StoreError;
 
@@ -50,6 +52,29 @@ pub(crate) fn validate_new(
         artifacts.insert(sha.clone());
     }
     Ok(artifacts.into_iter().collect())
+}
+
+/// Whether a ticket may expose the channel it names. A ticket holder reads
+/// every thread and message of the channel, so the shared DM channel (every
+/// direct message of the workspace) is never shareable, and a private channel
+/// is shareable only by one of its own members: an admin who is not in it must
+/// not be able to read it by minting a ticket.
+pub(crate) fn ensure_channel_shareable(
+    channel_name: &str,
+    private: bool,
+    creator_is_member: bool,
+) -> Result<(), StoreError> {
+    if channel_name == DM_CHANNEL_NAME {
+        return Err(StoreError::InvalidInput(
+            "direct messages are not shared by ticket".into(),
+        ));
+    }
+    if private && !creator_is_member {
+        return Err(StoreError::InvalidInput(
+            "a share ticket for a private channel needs a member of it".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

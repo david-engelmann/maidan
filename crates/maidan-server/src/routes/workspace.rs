@@ -746,7 +746,7 @@ pub async fn get_run_occupancy(
     Ok(Json(
         state
             .store
-            .run_occupancy(workspace_id, parent_run_id)
+            .run_occupancy(workspace_id, auth.member_id(), parent_run_id)
             .await?,
     ))
 }

@@ -119,7 +119,7 @@ pub async fn buried_decisions_for_member(
     since: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<BuriedDecision>, crate::error::StoreError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query(&format!(
         "SELECT tr.thread_id AS thread_id, t.channel_id AS channel_id, t.title AS thread_title,
                 tr.result AS result, tr.produced_by AS produced_by, tr.produced_at AS produced_at
          FROM maidan_thread_results tr
@@ -132,12 +132,15 @@ pub async fn buried_decisions_for_member(
              OR EXISTS (SELECT 1 FROM maidan_thread_follows tf
                         WHERE tf.member_id = $1 AND tf.thread_id = t.id)
            )
+           AND {}
          ORDER BY tr.produced_at DESC
          LIMIT $3",
-    )
+        crate::thread_access::thread_visible_to("t.id", "$1::uuid", "$4")
+    ))
     .bind(member_id.0)
     .bind(since)
     .bind(limit)
+    .bind(maidan_types::DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     Ok(rows

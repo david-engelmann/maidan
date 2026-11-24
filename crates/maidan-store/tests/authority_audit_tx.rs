@@ -76,6 +76,14 @@ where
         })
         .await
         .unwrap();
+    store
+        .add_channel_member(
+            channel.id,
+            member.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
+        .await
+        .unwrap();
     let grant = |purpose: &str| NewDelegationGrant {
         workspace_id: ws.id,
         subject_id: member.id,

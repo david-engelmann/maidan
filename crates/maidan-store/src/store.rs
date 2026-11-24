@@ -781,12 +781,14 @@ pub trait ThreadLineageStore: Send + Sync {
         parent_run_id: &str,
     ) -> Result<Vec<Thread>, StoreError>;
     /// Nested occupancy for a producer run: the two-clocks partition of every
-    /// **open** thread in the workspace that shares `parent_run_id`. Empty /
-    /// unknown run → zeros, not an error. F7 mute stays orthogonal (a muted
-    /// nested thread still counts).
+    /// **open** thread in the workspace that shares `parent_run_id` and that
+    /// `reader` may read (a private channel it is not in, or a DM it is not
+    /// part of, is not counted). Empty / unknown run → zeros, not an error.
+    /// F7 mute stays orthogonal (a muted nested thread still counts).
     async fn run_occupancy(
         &self,
         workspace_id: WorkspaceId,
+        reader: MemberId,
         parent_run_id: &str,
     ) -> Result<RunOccupancy, StoreError>;
 }
