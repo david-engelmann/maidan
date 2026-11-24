@@ -3,7 +3,7 @@
 
 use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
+use maidan_types::{ChannelMemberRole, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 
 async fn sqlite() -> SqliteStore {
     let pool = maidan_search::sqlite_pool_options()
@@ -142,6 +142,132 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(for_onlooker[0].thread_id, t3.id);
 }
 
+/// A follow is not an access grant: a result on a thread the member cannot
+/// read now (it left the private channel, or the thread is a DM it is not
+/// in) is not handed back, while a current member still gets it.
+async fn buried_decisions_leave_with_the_access_that_justified_them(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "access".into(),
+        })
+        .await
+        .expect("ws");
+    let mk = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let producer = store.create_member(mk("producer")).await.expect("producer");
+    let stayer = store.create_member(mk("stayer")).await.expect("stayer");
+    let leaver = store.create_member(mk("leaver")).await.expect("leaver");
+    let partner = store.create_member(mk("partner")).await.expect("partner");
+    let epoch = chrono::DateTime::from_timestamp(0, 0).unwrap();
+
+    let private = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "private".into(),
+            topic: None,
+            private: true,
+        })
+        .await
+        .expect("private channel");
+    for member in [producer.id, stayer.id, leaver.id] {
+        store
+            .add_channel_member(private.id, member, ChannelMemberRole::Member)
+            .await
+            .expect("join");
+    }
+    for member in [stayer.id, leaver.id] {
+        store
+            .follow_channel(member, private.id)
+            .await
+            .expect("follow channel");
+    }
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: private.id,
+            parent_thread_id: None,
+            title: Some("secret plan".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread");
+    store
+        .follow_thread(leaver.id, thread.id)
+        .await
+        .expect("follow thread");
+    store
+        .set_thread_result_claiming(thread.id, producer.id, &serde_json::json!("go"))
+        .await
+        .expect("result");
+    for member in [stayer.id, leaver.id] {
+        let before = store
+            .buried_decisions_for_member(member, epoch, 50)
+            .await
+            .expect("before removal");
+        assert_eq!(before.len(), 1, "a member of the channel reads its result");
+    }
+
+    store
+        .remove_channel_member(private.id, leaver.id)
+        .await
+        .expect("remove");
+    let after = store
+        .buried_decisions_for_member(leaver.id, epoch, 50)
+        .await
+        .expect("leaver after removal");
+    assert!(
+        after.is_empty(),
+        "a member removed from the private channel keeps no results from it: {after:?}"
+    );
+    let stayed = store
+        .buried_decisions_for_member(stayer.id, epoch, 50)
+        .await
+        .expect("stayer after removal");
+    assert_eq!(stayed.len(), 1, "a current member still lists it");
+    assert_eq!(stayed[0].thread_id, thread.id);
+
+    // A DM thread the follower is not a participant of.
+    let dm = store
+        .open_dm_conversation(ws.id, producer.id, partner.id)
+        .await
+        .expect("dm");
+    store
+        .follow_thread(leaver.id, dm.thread_id)
+        .await
+        .expect("follow dm thread");
+    store
+        .follow_thread(partner.id, dm.thread_id)
+        .await
+        .expect("participant follows dm thread");
+    store
+        .set_thread_result_claiming(dm.thread_id, producer.id, &serde_json::json!("private"))
+        .await
+        .expect("dm result");
+    assert!(
+        store
+            .buried_decisions_for_member(leaver.id, epoch, 50)
+            .await
+            .expect("leaver dm")
+            .is_empty(),
+        "a DM the member is not in shows nothing"
+    );
+    let participant = store
+        .buried_decisions_for_member(partner.id, epoch, 50)
+        .await
+        .expect("partner dm");
+    assert_eq!(participant.len(), 1, "a participant still lists its DM");
+    assert_eq!(participant[0].thread_id, dm.thread_id);
+}
+
+#[tokio::test]
+async fn buried_decisions_leave_with_the_access_that_justified_them_sqlite() {
+    buried_decisions_leave_with_the_access_that_justified_them(&sqlite().await).await;
+}
+
 #[tokio::test]
 async fn buried_decisions_scoped_to_follows_and_others_sqlite() {
     let store = sqlite().await;
@@ -180,4 +306,5 @@ async fn buried_decisions_scoped_to_follows_and_others_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    buried_decisions_leave_with_the_access_that_justified_them(&store).await;
 }

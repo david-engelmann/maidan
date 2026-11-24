@@ -35,7 +35,12 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
     secret.as_str().to_owned()
 }
 
-async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
+async fn spawn() -> (
+    SocketAddr,
+    reqwest::Client,
+    Arc<dyn Store>,
+    sqlx::SqlitePool,
+) {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -51,7 +56,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         store.clone(),
         Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
         Arc::new(maidan_bus::InMemoryBus::new()),
-        Arc::new(maidan_search::SqliteSearch::new(pool)),
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone())),
         Arc::new(maidan_search::HashV1Provider),
         false,
         FederationRuntime::new(true, None),
@@ -65,7 +70,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .unwrap();
-    (addr, client, store)
+    (addr, client, store, pool)
 }
 
 async fn upload(client: &reqwest::Client, base: &str, bearer: &str, body: &'static [u8]) -> String {
@@ -87,7 +92,7 @@ async fn upload(client: &reqwest::Client, base: &str, bearer: &str, body: &'stat
 
 #[tokio::test]
 async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
-    let (addr, client, store) = spawn().await;
+    let (addr, client, store, _pool) = spawn().await;
     let base = format!("http://{addr}");
     let workspace = store
         .create_workspace(NewWorkspace {
@@ -111,6 +116,14 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
             topic: Some("shared room".into()),
             private: true,
         })
+        .await
+        .unwrap();
+    store
+        .add_channel_member(
+            incident.id,
+            owner.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
         .await
         .unwrap();
     let unrelated = store
@@ -402,4 +415,141 @@ async fn consumer_surface_is_paginated_read_only_and_fail_closed() {
         .unwrap();
     assert_eq!(expired.status(), invalid_status);
     assert_eq!(expired.text().await.unwrap(), invalid_body);
+}
+
+/// A ticket reads a whole channel, so the operator routes refuse the shared DM
+/// channel and a private channel the minting admin is not in. A ticket for the
+/// DM channel minted before that refusal serves nothing.
+#[tokio::test]
+async fn a_share_ticket_never_opens_direct_messages_or_a_private_channel_its_creator_is_not_in() {
+    let (addr, client, store, pool) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "tenant".into(),
+        })
+        .await
+        .unwrap();
+    let person = |handle: &'static str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Human,
+    };
+    let insider = store.create_member(person("insider")).await.unwrap();
+    let outsider = store.create_member(person("outsider")).await.unwrap();
+    let peer = store.create_member(person("peer")).await.unwrap();
+    let channel = |name: &'static str, private: bool| NewChannel {
+        workspace_id: ws.id,
+        name: name.into(),
+        topic: None,
+        private,
+    };
+    let private = store
+        .create_channel(channel("private", true))
+        .await
+        .unwrap();
+    let public = store
+        .create_channel(channel("public", false))
+        .await
+        .unwrap();
+    store
+        .add_channel_member(
+            private.id,
+            insider.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
+        .await
+        .unwrap();
+    let dm = store
+        .open_dm_conversation(ws.id, insider.id, peer.id)
+        .await
+        .unwrap();
+    let dm_channel = store.get_thread(dm.thread_id).await.unwrap().channel_id;
+    store
+        .post_message(NewMessage {
+            thread_id: dm.thread_id,
+            author_id: insider.id,
+            body: "a private word".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+
+    let admin_caps = vec![capability::TOKEN_ADMIN.into()];
+    let insider_token = mint(store.as_ref(), ws.id, insider.id, admin_caps.clone()).await;
+    let outsider_token = mint(store.as_ref(), ws.id, outsider.id, admin_caps).await;
+    let create = |token: String, channel_id: uuid::Uuid| {
+        let client = client.clone();
+        let url = format!("{base}/workspaces/{}/share-tickets", ws.id.0);
+        async move {
+            client
+                .post(url)
+                .header("authorization", format!("Bearer {token}"))
+                .json(&json!({
+                    "channel_id": channel_id,
+                    "expires_at": Utc::now() + ChronoDuration::hours(1),
+                }))
+                .send()
+                .await
+                .unwrap()
+        }
+    };
+
+    for token in [&insider_token, &outsider_token] {
+        let refused = create(token.clone(), dm_channel.0).await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "the DM channel");
+    }
+    let refused = create(outsider_token.clone(), private.id.0).await;
+    assert_eq!(
+        refused.status(),
+        StatusCode::BAD_REQUEST,
+        "a private channel its creator is not in"
+    );
+    let allowed = create(insider_token.clone(), private.id.0).await;
+    assert_eq!(
+        allowed.status(),
+        StatusCode::CREATED,
+        "a member's own channel"
+    );
+    let allowed = create(outsider_token, public.id.0).await;
+    assert_eq!(allowed.status(), StatusCode::CREATED, "a public channel");
+
+    // A DM-channel ticket from before the refusal: the row goes in directly.
+    let secret = format!("maid_share_{}", "d".repeat(64));
+    sqlx::query(
+        "INSERT INTO maidan_share_tickets
+            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(ws.id.0)
+    .bind(dm_channel.0)
+    .bind(insider.id.0)
+    .bind(hash_secret(&secret))
+    .bind(Utc::now() + ChronoDuration::hours(1))
+    .bind(Utc::now())
+    .execute(&pool)
+    .await
+    .unwrap();
+    let share_auth = format!("ShareTicket {secret}");
+    for path in [
+        "share/manifest".to_owned(),
+        "share/threads".to_owned(),
+        format!("share/threads/{}/messages", dm.thread_id.0),
+    ] {
+        let response = client
+            .get(format!("{base}/{path}"))
+            .header("authorization", &share_auth)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "an old DM-channel ticket serves nothing at {path}"
+        );
+        assert!(!response.text().await.unwrap().contains("a private word"));
+    }
 }

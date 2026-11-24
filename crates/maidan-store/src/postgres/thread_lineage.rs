@@ -1,12 +1,12 @@
 //! Run lineage — see the SQLite twin.
 //!
 //! `parent_run_id` is the producer's `run_id` as-is. Nested occupancy
-//! attributes every open workspace thread that shares it. F7 mute is a
+//! attributes every open workspace thread that shares it and that the reader may read. F7 mute is a
 //! different table and is not consulted.
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    normalize_parent_run_id, RunOccupancy, Thread, ThreadId, ThreadLineage, WorkspaceId,
+    normalize_parent_run_id, MemberId, RunOccupancy, Thread, ThreadId, ThreadLineage, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -97,6 +97,7 @@ pub async fn list_threads(
 pub async fn occupancy(
     pool: &PgPool,
     workspace_id: WorkspaceId,
+    reader: MemberId,
     parent_run_id: &str,
 ) -> Result<RunOccupancy, StoreError> {
     let parent_run_id = match normalize_parent_run_id(parent_run_id) {
@@ -119,6 +120,8 @@ pub async fn occupancy(
     let sql = crate::queue_counts::run_occupancy_select(&crate::queue_counts::RunSql {
         workspace: "$1",
         parent_run_id: "$2",
+        reader: "$3::uuid",
+        dm_channel: "$4",
         thread: crate::claimability::ThreadSql {
             now: "NOW()",
             lapsed_worked_secs: crate::postgres::threads::LAPSED_WORKED_SECS,
@@ -128,6 +131,8 @@ pub async fn occupancy(
     let row = sqlx::query(&sql)
         .bind(workspace_id.0)
         .bind(&parent_run_id)
+        .bind(reader.0)
+        .bind(maidan_types::DM_CHANNEL_NAME)
         .fetch_one(pool)
         .await?;
     Ok(RunOccupancy {

@@ -2235,8 +2235,9 @@ pub(super) async fn list_run_threads(
 }
 
 /// Nested occupancy for a producer run: queued / claimed / working / blocked
-/// across every **open** thread that shares `parent_run_id`. F7 mute stays
-/// orthogonal. Empty / unknown run → zeros, not an error.
+/// across every **open** thread that shares `parent_run_id` and that the caller
+/// can read. F7 mute stays orthogonal. Empty / unknown run → zeros, not an
+/// error.
 pub(super) async fn get_run_occupancy(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
@@ -2245,7 +2246,7 @@ pub(super) async fn get_run_occupancy(
     let a: RunLineageArgs = crate::tools::parse_args(args)?;
     let parent_run_id = require_parent_run_id(&a.parent_run_id)?;
     let occupancy = store
-        .run_occupancy(auth.workspace_id(), parent_run_id)
+        .run_occupancy(auth.workspace_id(), auth.member_id(), parent_run_id)
         .await?;
     Ok(content_json(&occupancy))
 }

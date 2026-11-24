@@ -86,6 +86,19 @@ pub async fn middleware(
             return harden_share_response(ApiError::Unauthorized.into_response());
         }
     };
+    // A ticket for the shared DM channel would read every direct message of
+    // the workspace. Minting refuses one now, and this check kills any minted
+    // before that, with the answer an unknown ticket gets.
+    match state.store.get_channel(ticket.channel_id).await {
+        Ok(channel) if channel.name == maidan_types::DM_CHANNEL_NAME => {
+            return harden_share_response(ApiError::Unauthorized.into_response());
+        }
+        Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+        Err(error) => {
+            tracing::error!(error = %error, "share_ticket.channel_check_failed");
+            return harden_share_response(ApiError::Unauthorized.into_response());
+        }
+    }
     let workspace_id = ticket.workspace_id;
     // A share ticket is a credential of its workspace like any other, and the
     // one facing outward: a suspended workspace's tickets are refused too.

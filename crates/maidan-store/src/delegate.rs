@@ -605,9 +605,11 @@ macro_rules! store_delegations {
             async fn run_occupancy(
                 &self,
                 workspace_id: WorkspaceId,
+                reader: MemberId,
                 parent_run_id: &str,
             ) -> Result<RunOccupancy, StoreError> {
-                thread_lineage::occupancy(self.read_pool(), workspace_id, parent_run_id).await
+                thread_lineage::occupancy(self.read_pool(), workspace_id, reader, parent_run_id)
+                    .await
             }
         }
     };
