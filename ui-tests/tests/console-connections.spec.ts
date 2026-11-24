@@ -82,12 +82,12 @@ async function open(page: Page, theme: "dark" | "light" = "dark", viewport = { w
 const connections = (page: Page) => page.getByRole("list", { name: "Connections", exact: true });
 const surface = (page: Page, name: string): Locator =>
   connections(page).getByRole("listitem").filter({ has: page.getByRole("heading", { name, exact: true }) });
-const webhooks = (page: Page) => page.getByRole("region", { name: "Webhooks", exact: true });
+const webhooks = (page: Page) => page.getByRole("region", { name: "Outbound webhooks", exact: true });
 
 async function connectGithub(page: Page, token: string, secret?: string) {
   const row = surface(page, "GitHub");
   await row.getByLabel("Fine-grained personal access token", { exact: true }).fill(token);
-  if (secret) await row.getByLabel("Webhook secret (optional)").fill(secret);
+  if (secret) await row.getByLabel("Webhook secret (for inbound events)").fill(secret);
   await row.getByRole("button", { name: "Connect GitHub", exact: true }).click();
 }
 
@@ -237,7 +237,7 @@ test("an outbound webhook is added, listed with its secret shown once, and revok
   await mine.getByRole("button", { name: "Revoke", exact: true }).click();
   await expect(mine).toHaveCount(0);
   await page.reload();
-  await expect(panel.getByRole("heading", { name: "Webhooks", exact: true })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Outbound webhooks", exact: true })).toBeVisible();
   await expect(mine).toHaveCount(0);
   expect(w.problems).toEqual([]);
 });
