@@ -6,10 +6,10 @@ a person's review and close, the two-tenant refusals, the meters, and both
 tenants erased. [Launch Gate](../Launch%20Gate.md) is the runbook, and says
 what each check means.
 
-**The command passed on `v473.0.0`. maidan.world has run `v474.0.0` since
-2026-11-22, which changes no route or tool, and the command has not been run on
+**The command passed on `v473.0.0`. maidan.world has run `v478.0.0` since
+2026-11-24, which adds routes and no MCP tool, and the command has not been run on
 it. Its rehearsal on a local Postgres is in
-[`listings/validation/v474.md`](../../listings/validation/v474.md). The
+[`listings/validation/v478.md`](../../listings/validation/v478.md). The
 launch is not called here:** the legs the command leaves to a person, and the go or no-go
 rows of the runbook, are the maintainer's.
 

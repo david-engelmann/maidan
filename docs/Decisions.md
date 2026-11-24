@@ -2421,3 +2421,39 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** When advice has run on real work for a while: whether an eleventh question should ask if a change touches production configuration or infrastructure, the gap the eval's one green-for-amber miss showed; whether amber on every change to sign-in or deletion of data is too much to look at; whether a workspace should choose its own questions; and whether any judgment should move from advice to a gate, which would need the model to read more than the agent's own account.
 
 **Record.** `crates/maidan-server/src/land_gate_advisor.rs`, [Decision models](Decision-Models.md), `scripts/land-gate-advice-cases.json`, `scripts/eval-land-gate-advisor.py`, T32 in the [threat model](Threat-Model.md).
+
+### A workspace is served by its own connection, or by the server's credential only when the operator opened it (2026-11-23)
+
+**Decision.** A workspace is served on GitHub, Slack and Linear by the connection it stored itself. A workspace the operator opened that stored none is served by the server's own credential when the server holds one. Any other workspace, one made by sign-up or by the demo's sandbox, is served by nothing and is told to connect the surface first. A stored connection always wins over the server's credential, and one resolver answers this for every send and read. The coordinator decided it under the maintainer's delegation of reversible product calls.
+
+**Alternative.** Keep lending the server's credential to every workspace and bound each one by its allowlist. Or refuse the server's credential everywhere and make every workspace, the operator's included, connect its own.
+
+**Why.** Lending the server's credential to a workspace the operator did not open let any sign-up aim it. Its admin could bless any repository or channel and watch any pull request, and the server then read and wrote there as itself. A workspace the operator opened is the operator's own, so the credential stays available to it, and a workspace that stores its own connection is bounded by that account's permissions and its own allowlist.
+
+**To revisit.** If an operator wants to lend the credential to one named sign-up workspace, that is a grant on the workspace, not a return to the default.
+
+**Record.** The `477.0.0` and `478.0.0` sections of [CHANGELOG](../CHANGELOG.md), `listings/validation/v478.md` ("Probes on the released binary").
+
+### A webhook made in the console acts as one of the admin's own tokens (2026-11-23)
+
+**Decision.** A webhook made in the console acts as one of the signed-in admin's own live tokens that holds `workspace:admin` and `workspace:read`, the one that never expires if there is one and else the latest expiry. It delivers while that token is live and ends when the token is revoked or the member is deactivated. Nothing is minted for it, and a person who holds no such token is refused with a 403 that says so. The coordinator decided it under the maintainer's delegation of reversible product calls.
+
+**Alternative.** Mint a token for the webhook when it is created. Or store a console webhook with no token.
+
+**Why.** A token minted for the webhook would have kept its holder a console admin after their own admin token was revoked. A webhook with no token was revoked on its first matching event, so it never delivered. Acting as one of the admin's own tokens is what a webhook made with that token already does, so the console adds no authority of its own.
+
+**To revisit.** If a console session gets a durable identity of its own to act as, a console webhook could act as the signed-in member directly.
+
+**Record.** The `478.0.0` section of [CHANGELOG](../CHANGELOG.md).
+
+### A share ticket never opens direct messages (2026-11-23)
+
+**Decision.** A share ticket is never minted for the shared direct-message channel, and a ticket for a private channel needs a creator who is a member of that channel. A ticket for the direct-message channel minted earlier serves nothing. The coordinator decided it under the maintainer's delegation of reversible product calls.
+
+**Alternative.** Allow a ticket for the direct-message channel when its creator is a participant in some conversation there.
+
+**Why.** The direct-message channel holds every direct message of the workspace, so a ticket for it would open conversations its creator is not part of. No capability opens another member's conversation, and a share ticket is a capability.
+
+**To revisit.** A ticket scoped to a single conversation would be a new feature with its own rule for who may mint it, not a loosening of this one.
+
+**Record.** The `478.0.0` section of [CHANGELOG](../CHANGELOG.md), `listings/validation/v478.md` ("Probes on the released binary").
