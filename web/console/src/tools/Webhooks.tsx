@@ -168,7 +168,8 @@ function WebhooksPanel({ ws }: { ws: string | null }) {
       ) : (
         <p className="muted">No webhooks yet. Add one to have matching events posted to a URL you run.</p>
       )}
-      <form className="stack-form" aria-label="Add a webhook" onSubmit={(e) => void add(e)}>
+      <h3 id="webhook-add-title">Add a webhook</h3>
+      <form className="stack-form" aria-labelledby="webhook-add-title" onSubmit={(e) => void add(e)}>
         <div className="field">
           <label htmlFor="webhook-url">URL</label>
           <input

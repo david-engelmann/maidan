@@ -132,7 +132,7 @@ test("connecting sends the token once, clears the field, and the token is nowher
   expect(bodies).toEqual([{ method: "PUT", url: "https://console.test/ui/api/workspaces/ws/connections/github", body: JSON.stringify({ token: TOKEN, webhook_secret: SECRET }) }]);
   expect(router.calls.filter((c) => LIST.test(c.url)).length).toBe(2);
   // The fields are empty and the secrets are in no node, attribute or notice.
-  expect((gh.getByLabelText("Replace the Fine-grained personal access token") as HTMLInputElement).value).toBe("");
+  expect((gh.getByLabelText("Replace the fine-grained personal access token") as HTMLInputElement).value).toBe("");
   expect((gh.getByLabelText("Webhook secret (optional)") as HTMLInputElement).value).toBe("");
   expect(document.body.innerHTML).not.toContain(TOKEN);
   expect(document.body.innerHTML).not.toContain(SECRET);

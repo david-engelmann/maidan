@@ -163,7 +163,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
     }
   };
 
-  const tokenLabel = own ? `Replace the ${info?.token ?? "token"}` : `${info?.token ?? "Token"}`;
+  const tokenLabel = own ? `Replace the ${info?.noun ?? "token"}` : `${info?.token ?? "Token"}`;
   const sendable = Boolean(token.trim()) || (own && Boolean(secret.trim()));
   return (
     <li ref={item} tabIndex={-1} className="tool-row connection-row" data-surface={surface} data-source={row.source ?? "none"}>
