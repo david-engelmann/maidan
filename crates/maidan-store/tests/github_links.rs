@@ -56,7 +56,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("thread");
 
     assert!(store
-        .get_github_issue_link("o/r", 42)
+        .get_github_issue_link(ws.id, "o/r", 42)
         .await
         .expect("get none")
         .is_none());
@@ -76,7 +76,7 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(link.issue_number, 42);
 
     let got = store
-        .get_github_issue_link("o/r", 42)
+        .get_github_issue_link(ws.id, "o/r", 42)
         .await
         .expect("get")
         .expect("some");
@@ -132,11 +132,11 @@ async fn run_suite(store: &dyn Store) {
     // failure gets to announce it. Re-linking is the re-enable path.
     assert!(got.disabled_at.is_none());
     assert!(store
-        .disable_github_issue_link("o/r", 42)
+        .disable_github_issue_link(ws.id, "o/r", 42)
         .await
         .expect("disable"));
     let disabled_at = store
-        .get_github_issue_link("o/r", 42)
+        .get_github_issue_link(ws.id, "o/r", 42)
         .await
         .expect("get3")
         .expect("some3")
@@ -144,14 +144,14 @@ async fn run_suite(store: &dyn Store) {
         .expect("disabled");
     assert!(
         !store
-            .disable_github_issue_link("o/r", 42)
+            .disable_github_issue_link(ws.id, "o/r", 42)
             .await
             .expect("disable again"),
         "a second failure does not re-announce"
     );
     assert_eq!(
         store
-            .get_github_issue_link("o/r", 42)
+            .get_github_issue_link(ws.id, "o/r", 42)
             .await
             .expect("get4")
             .expect("some4")
@@ -172,7 +172,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("re-link");
     assert!(
         store
-            .get_github_issue_link("o/r", 42)
+            .get_github_issue_link(ws.id, "o/r", 42)
             .await
             .expect("get5")
             .expect("some5")
@@ -182,16 +182,19 @@ async fn run_suite(store: &dyn Store) {
     );
 
     // Unlink one.
-    assert!(store.unlink_github_issue("o/r", 42).await.expect("unlink"));
+    assert!(store
+        .unlink_github_issue(ws.id, "o/r", 42)
+        .await
+        .expect("unlink"));
     assert!(
         !store
-            .unlink_github_issue("o/r", 42)
+            .unlink_github_issue(ws.id, "o/r", 42)
             .await
             .expect("unlink again"),
         "second unlink removes nothing"
     );
     assert!(store
-        .get_github_issue_link("o/r", 42)
+        .get_github_issue_link(ws.id, "o/r", 42)
         .await
         .expect("get after unlink")
         .is_none());
@@ -266,7 +269,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("moving a link to a free thread");
     assert_eq!(
         store
-            .get_github_issue_link("o/r", 45)
+            .get_github_issue_link(ws.id, "o/r", 45)
             .await
             .expect("get 45")
             .expect("some")

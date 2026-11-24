@@ -19,8 +19,9 @@ use axum::{
 use hmac::{Hmac, Mac};
 use maidan_auth::{capability::WORKSPACE_READ, capability::WORKSPACE_WRITE, AuthContext};
 use maidan_types::{
-    EgressKind, EgressTarget, ExternalRef, MessageOrigin, MessageProvenance, NewEgressOutbox,
-    NewSlackChannelLink, SlackChannelLink, ThreadId, WorkspaceId,
+    ConnectionSurface, EgressKind, EgressTarget, ExternalRef, InboundScope, MessageOrigin,
+    MessageProvenance, NewEgressOutbox, NewSlackChannelLink, SlackChannelLink, ThreadId,
+    WorkspaceId,
 };
 use sha2::Sha256;
 
@@ -123,6 +124,43 @@ pub async fn slack_events(
     let Some(cfg) = state.slack.as_ref() else {
         return ApiError::NotFound.into_response();
     };
+    if !request_is_signed(&headers, &cfg.signing_secret, &body) {
+        return ApiError::SignatureInvalid.into_response();
+    }
+    handle_slack_event(
+        &state,
+        InboundScope::Instance(ConnectionSurface::Slack),
+        &body,
+    )
+    .await
+}
+
+/// `POST /workspaces/:wid/connections/slack/events`: the same events on a
+/// workspace's own URL, verified with the `signing_secret` the workspace
+/// stored. `404` (one fixed answer) when the workspace is unknown, has no Slack
+/// connection or stored no secret, so the three cannot be told apart. What it
+/// accepts reaches only the workspace's own links.
+pub async fn workspace_slack_events(
+    State(state): State<AppState>,
+    ApiPath(wid): ApiPath<uuid::Uuid>,
+    headers: HeaderMap,
+    ApiText(body): ApiText,
+) -> Response {
+    let workspace_id = WorkspaceId(wid);
+    let Some(secret) =
+        crate::inbound::stored_inbound_secret(&state, workspace_id, ConnectionSurface::Slack).await
+    else {
+        return ApiError::NotFound.into_response();
+    };
+    if !request_is_signed(&headers, &secret, &body) {
+        return ApiError::SignatureInvalid.into_response();
+    }
+    handle_slack_event(&state, InboundScope::Workspace(workspace_id), &body).await
+}
+
+/// Whether the request carries Slack's signature of `body` under
+/// `signing_secret`, inside the replay window.
+fn request_is_signed(headers: &HeaderMap, signing_secret: &str, body: &str) -> bool {
     let timestamp = headers
         .get("x-slack-request-timestamp")
         .and_then(|v| v.to_str().ok())
@@ -132,11 +170,12 @@ pub async fn slack_events(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     let now = chrono::Utc::now().timestamp();
-    if !verify_slack_signature(&cfg.signing_secret, timestamp, &body, signature, now) {
-        return ApiError::SignatureInvalid.into_response();
-    }
+    verify_slack_signature(signing_secret, timestamp, body, signature, now)
+}
 
-    let payload: serde_json::Value = match serde_json::from_str(&body) {
+/// One verified Slack request, routed to the links `scope` reaches.
+async fn handle_slack_event(state: &AppState, scope: InboundScope, body: &str) -> Response {
+    let payload: serde_json::Value = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(e) => {
             return ApiError::BadRequest(format!("invalid event payload: {e}")).into_response();
@@ -159,7 +198,7 @@ pub async fn slack_events(
             if let Some(event) = payload.get("event") {
                 let team = payload.get("team_id").and_then(|v| v.as_str());
                 let event_id = payload.get("event_id").and_then(|v| v.as_str());
-                route_slack_event(&state, team, event_id, event).await;
+                route_slack_event(state, scope, team, event_id, event).await;
             }
             StatusCode::OK.into_response()
         }
@@ -181,6 +220,7 @@ pub async fn slack_events(
 /// `event_id` is not posted, since nothing could tell its retry from it.
 async fn route_slack_event(
     state: &AppState,
+    scope: InboundScope,
     team: Option<&str>,
     event_id: Option<&str>,
     event: &serde_json::Value,
@@ -207,17 +247,33 @@ async fn route_slack_event(
         .get("user")
         .and_then(|v| v.as_str())
         .unwrap_or("slack");
-    let link = match state.store.get_slack_channel_link(slack_channel).await {
-        Ok(Some(l)) => l,
-        Ok(None) => return, // channel not linked — ignore
+    // Every workspace the route serves that linked the channel hears of the
+    // message, and no other does.
+    let links = match state
+        .store
+        .list_slack_channel_links_for_channel(scope, slack_channel)
+        .await
+    {
+        Ok(links) => links,
         Err(err) => {
             tracing::warn!(error = %err, "slack ingress: link lookup failed");
             return;
         }
     };
-    if !crate::egress_worker::serves_workspace(state, link.workspace_id).await {
-        return; // linked by a workspace the server's credentials do not serve
+    for link in links {
+        post_slack_message(state, &link, slack_channel, user, text, event_id).await;
     }
+}
+
+/// One link's copy of a Slack message, posted into its thread.
+async fn post_slack_message(
+    state: &AppState,
+    link: &SlackChannelLink,
+    slack_channel: &str,
+    user: &str,
+    text: &str,
+    event_id: &str,
+) {
     let new = maidan_types::NewMessage {
         thread_id: link.thread_id,
         author_id: link.member_id,
@@ -359,6 +415,18 @@ impl SlackWebClient {
         }
     }
 
+    /// The name of the Slack workspace this client's token belongs to
+    /// (`auth.test`): the one call a workspace's token is checked with before
+    /// it is stored.
+    pub async fn identity(&self) -> Result<String, SlackError> {
+        let v = self.call("auth.test", serde_json::json!({})).await?;
+        Ok(v.get("team")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.is_empty())
+            .unwrap_or("Slack")
+            .to_string())
+    }
+
     /// Call a Slack Web API method and decode its envelope. Slack answers logical
     /// errors with HTTP 200 and `{"ok": false, "error": ...}`, so the status is not
     /// the signal — the body is.
@@ -436,8 +504,9 @@ impl SlackSender for SlackWebClient {
 /// [`egress_worker`](crate::egress_worker) drains with retry/backoff. Until
 /// 377.2 this posted inline and a transient failure dropped the message.
 ///
-/// No-op unless a [`SlackSender`] is configured (the worker only runs then, so
-/// queueing without one would pile up rows nothing drains); **skips messages
+/// No-op unless a [`SlackSender`] serves the linked workspace (the worker only
+/// sends for one that is served, so queueing without one would pile up rows
+/// nothing drains); **skips messages
 /// that originated in Slack** (their server-set provenance) so a projected
 /// inbound message is never echoed back — loop prevention.
 ///
@@ -450,7 +519,7 @@ pub async fn route_message_to_slack(
     thread_id: maidan_types::ThreadId,
     message: &maidan_types::Message,
 ) {
-    if state.slack_sender.is_none() {
+    if !state.may_send_anywhere() {
         return;
     }
     // The server-set provenance, never `metadata`: a member could forge the
@@ -474,6 +543,18 @@ pub async fn route_message_to_slack(
             return;
         }
     };
+    // Queueing for a workspace no credential serves on Slack would only pile
+    // up rows nothing sends. A connection that could not be read just now is
+    // not that: the message is queued anyway, and the worker opens it again at
+    // send time and retries or gives up. Dropping it here would lose it for
+    // good, since the notification consumer does not retry.
+    match state.slack_for(link.workspace_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return,
+        Err(err) => {
+            tracing::warn!(error = %err, "slack egress: the workspace's connection could not be read, queueing anyway");
+        }
+    }
     let queued = state
         .store
         .enqueue_egress(NewEgressOutbox {
@@ -554,16 +635,13 @@ pub async fn unlink_slack_channel(
 ) -> ApiResult<StatusCode> {
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, WorkspaceId(wid))?;
-    // Scope the delete to this workspace: only unlink if the link belongs to it.
-    match state
+    // The unlink is the workspace's own: another's link to the same channel is
+    // not reached, nor told of.
+    if state
         .store
-        .get_slack_channel_link(&slack_channel_id)
+        .unlink_slack_channel(WorkspaceId(wid), &slack_channel_id)
         .await?
     {
-        Some(link) if link.workspace_id == WorkspaceId(wid) => {}
-        _ => return Err(ApiError::NotFound),
-    }
-    if state.store.unlink_slack_channel(&slack_channel_id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

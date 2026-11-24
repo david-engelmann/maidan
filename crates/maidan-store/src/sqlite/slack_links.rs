@@ -20,11 +20,9 @@ pub async fn link(
         "INSERT INTO maidan_slack_channel_links
            (slack_channel_id, workspace_id, channel_id, thread_id, member_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (slack_channel_id) DO UPDATE
-           SET workspace_id = excluded.workspace_id, channel_id = excluded.channel_id,
-               thread_id = excluded.thread_id, member_id = excluded.member_id,
-               disabled_at = NULL
-           WHERE maidan_slack_channel_links.workspace_id = excluded.workspace_id
+         ON CONFLICT (workspace_id, slack_channel_id) DO UPDATE
+           SET channel_id = excluded.channel_id, thread_id = excluded.thread_id,
+               member_id = excluded.member_id, disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.slack_channel_id)
@@ -33,24 +31,47 @@ pub async fn link(
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
     .bind(&now)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await?;
-    row.as_ref()
-        .map(row_to_link)
-        .ok_or_else(|| StoreError::Conflict("already linked by another workspace".into()))
+    Ok(row_to_link(&row))
 }
 
+/// The workspace's own link for a Slack channel.
 pub async fn get(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     slack_channel_id: &str,
 ) -> Result<Option<SlackChannelLink>, StoreError> {
     let row = sqlx::query(&format!(
-        "SELECT {COLS} FROM maidan_slack_channel_links WHERE slack_channel_id = ?"
+        "SELECT {COLS} FROM maidan_slack_channel_links
+         WHERE workspace_id = ? AND slack_channel_id = ?"
     ))
+    .bind(workspace_id.0)
     .bind(slack_channel_id)
     .fetch_optional(pool)
     .await?;
     Ok(row.as_ref().map(row_to_link))
+}
+
+/// The links for a Slack channel in the workspaces `scope` reaches, for an
+/// inbound delivery.
+pub async fn list_for_channel(
+    pool: &SqlitePool,
+    scope: maidan_types::InboundScope,
+    slack_channel_id: &str,
+) -> Result<Vec<SlackChannelLink>, StoreError> {
+    let sql = format!(
+        "SELECT {COLS} FROM maidan_slack_channel_links
+         WHERE slack_channel_id = ? AND {} ORDER BY created_at",
+        crate::inbound_scope::clause(scope, "workspace_id", "?")
+    );
+    let query = sqlx::query(&sql).bind(slack_channel_id);
+    let query = match crate::inbound_scope::bind(scope) {
+        crate::inbound_scope::Bind::Workspace(id) => query.bind(id),
+        crate::inbound_scope::Bind::Secret(name) => query.bind(name),
+    };
+    let rows = query.fetch_all(pool).await?;
+    Ok(rows.iter().map(row_to_link).collect())
 }
 
 pub async fn get_by_thread(
@@ -79,20 +100,33 @@ pub async fn list(
     Ok(rows.iter().map(row_to_link).collect())
 }
 
-pub async fn unlink(pool: &SqlitePool, slack_channel_id: &str) -> Result<bool, StoreError> {
-    let res = sqlx::query("DELETE FROM maidan_slack_channel_links WHERE slack_channel_id = ?")
-        .bind(slack_channel_id)
-        .execute(pool)
-        .await?;
+pub async fn unlink(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    slack_channel_id: &str,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_slack_channel_links
+         WHERE workspace_id = ? AND slack_channel_id = ?",
+    )
+    .bind(workspace_id.0)
+    .bind(slack_channel_id)
+    .execute(pool)
+    .await?;
     Ok(res.rows_affected() > 0)
 }
 
-pub async fn disable(pool: &SqlitePool, slack_channel_id: &str) -> Result<bool, StoreError> {
+pub async fn disable(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    slack_channel_id: &str,
+) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_slack_channel_links SET disabled_at = ?
-         WHERE slack_channel_id = ? AND disabled_at IS NULL",
+         WHERE workspace_id = ? AND slack_channel_id = ? AND disabled_at IS NULL",
     )
     .bind(Utc::now().to_rfc3339())
+    .bind(workspace_id.0)
     .bind(slack_channel_id)
     .execute(pool)
     .await?;

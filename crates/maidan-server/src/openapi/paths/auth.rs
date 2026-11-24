@@ -5,21 +5,21 @@ use uuid::Uuid;
 
 use crate::dto::{
     AllowEgressTarget, CancelThread, ClearLandGateAdvisor, CloseAbandonedThread,
-    ConfirmApprovalGate, CreateAgent, CreateChannel, CreateMessage, CreateThread,
-    CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
+    ConfirmApprovalGate, Connection, CreateAgent, CreateChannel, CreateMessage, CreateThread,
+    CreateWebhook, CreateWorkspaceInvite, CreatedAgentResponse, ListAuditQuery, ListEventsQuery,
     ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery, MintApiTokenResponse,
-    MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm,
-    OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
-    SessionWorkspaces, SetLandGateAdvisor, SetMemberDisplayName, ThreadTransitionsQuery,
-    ThreadVotes,
+    MintWebhookResponse, MintWorkspaceInviteResponse, OidcCallbackQuery, OidcLoginQuery,
+    OidcSignupForm, OidcSignupQuery, PeerResponse, RenameWorkspace, SearchQuery, SessionResponse,
+    SessionWorkspaces, SetConnection, SetLandGateAdvisor, SetMemberDisplayName,
+    ThreadTransitionsQuery, ThreadVotes, WebhookResponse,
 };
 use crate::error::ProblemDetails;
 use crate::land_gate_advisor::{LandGateAdvice, LandGateAdviceRequest, LandGateAdvisorStatus};
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
-    AllowedEgressTarget, ApprovalGate, AuditEvent, CancelledThread, Channel, Member, Message,
-    MessageEdit, StoredEvent, Thread, ThreadArtifact, ThreadReview, ThreadTransition, Vote,
-    Workspace, WorkspaceInvite,
+    AllowedEgressTarget, ApprovalGate, AuditEvent, CancelledThread, Channel, ConnectionSurface,
+    Member, Message, MessageEdit, StoredEvent, Thread, ThreadArtifact, ThreadReview,
+    ThreadTransition, Vote, Workspace, WorkspaceInvite,
 };
 
 /// Start an OIDC login
@@ -1001,3 +1001,134 @@ pub fn ui_list_votes() {}
     )
 )]
 pub fn ui_list_thread_votes() {}
+
+/// List a workspace's connections (console)
+///
+/// Always three rows, GitHub, Slack and Linear, with who serves the workspace
+/// on each. Never a token or a secret.
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/connections",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, description = "One row per surface", body = Vec<Connection>),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn ui_list_connections() {}
+
+/// Connect a workspace's own account (console)
+///
+/// The token is checked with the provider before it is stored. Sending only
+/// the inbound secret on a surface that already has a connection updates the
+/// secret and keeps the token.
+#[utoipa::path(
+    put,
+    path = "/ui/api/workspaces/{wid}/connections/{surface}",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("surface" = ConnectionSurface, Path, description = "github, slack or linear"),
+    ),
+    request_body = SetConnection,
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, description = "The surface's row", body = Connection),
+        (status = 400, description = "The provider refused the token, or the body does not fit the surface", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Not a surface", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "The provider could not be asked; nothing was stored", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 503, description = "This instance has no FEDERATION_ENCRYPTION_KEY to store a connection with", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_set_connection() {}
+
+/// Remove a workspace's own connection (console)
+///
+/// `204` whether or not the workspace had one. The workspace is then served
+/// only if the operator opened it and the server holds a credential.
+#[utoipa::path(
+    delete,
+    path = "/ui/api/workspaces/{wid}/connections/{surface}",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("surface" = ConnectionSurface, Path, description = "github, slack or linear"),
+    ),
+    security(
+        ("bearerAuth" = ["token:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 204, description = "No own connection remains"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "Not a surface", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_clear_connection() {}
+
+/// List a workspace's webhooks (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/workspaces/{wid}/webhooks",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(
+        ("bearerAuth" = ["workspace:read"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<WebhookResponse>),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn ui_list_webhooks() {}
+
+/// Create a webhook (console)
+#[utoipa::path(
+    post,
+    path = "/ui/api/workspaces/{wid}/webhooks",
+    tag = "auth",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWebhook,
+    security(
+        ("bearerAuth" = ["workspace:admin"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 201, body = MintWebhookResponse),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 503, description = "This instance has no FEDERATION_ENCRYPTION_KEY to keep the signing secret with", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn ui_create_webhook() {}
+
+/// Revoke a webhook (console)
+#[utoipa::path(
+    delete,
+    path = "/ui/api/workspaces/{wid}/webhooks/{whid}",
+    tag = "auth",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("whid" = Uuid, Path, description = "Webhook subscription id"),
+    ),
+    security(
+        ("bearerAuth" = ["workspace:write"]),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_revoke_webhook() {}

@@ -538,7 +538,7 @@ async fn an_update_404_recovers_via_the_marker_instead_of_disabling_a_link() {
 
     let link = h
         .store
-        .get_github_issue_link("acme/widgets", 7)
+        .get_github_issue_link(h.workspace_id, "acme/widgets", 7)
         .await
         .unwrap()
         .expect("link");
@@ -585,7 +585,7 @@ async fn a_result_401_dead_letters_without_disabling_the_projector_link() {
 
     let link = h
         .store
-        .get_github_issue_link("acme/widgets", 7)
+        .get_github_issue_link(h.workspace_id, "acme/widgets", 7)
         .await
         .unwrap()
         .expect("link");

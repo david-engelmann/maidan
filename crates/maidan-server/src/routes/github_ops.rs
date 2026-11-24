@@ -335,7 +335,25 @@ pub async fn mark_pull_ready(
         .await;
         return Err(ApiError::BadRequest("repo must be owner/name".into()));
     }
-    let Some(sender) = state.github_sender.as_ref() else {
+    let resolved = match state.github_for(auth.workspace_id()).await {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            let reason = err.to_string();
+            audit_mark_ready(
+                &state,
+                &auth,
+                &repo,
+                pull_number,
+                None,
+                None,
+                "failed",
+                Some(&reason),
+            )
+            .await;
+            return Err(ApiError::Internal(reason));
+        }
+    };
+    let Some(sender) = resolved.map(|resolved| resolved.sender) else {
         audit_mark_ready(
             &state,
             &auth,

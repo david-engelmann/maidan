@@ -98,7 +98,9 @@ const TEST_HARNESSES: &[(&str, &[&str])] = &[
     ),
     (
         "crates/maidan-server/src/test_support.rs",
-        &[".create_api_token("],
+        // `connect` seeds a workspace's stored connection for a test, the
+        // way `tenant` seeds its bearer.
+        &[".create_api_token(", ".create_secret("],
     ),
 ];
 

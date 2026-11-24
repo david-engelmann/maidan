@@ -194,14 +194,29 @@ fn interval_from_raw(raw: Option<String>) -> Option<Duration> {
 /// a failed read leaves it open until a later pass, behind the ones read
 /// longer ago.
 pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
-    if let Some(sender) = state.github_sender.as_deref() {
-        refresh_open_pulls_with(state.store.as_ref(), sender, workspace_id).await;
+    if let Some(github) = github_for_sweep(state, workspace_id).await {
+        refresh_open_pulls_with(state.store.as_ref(), github.sender.as_ref(), workspace_id).await;
     }
 }
 
-/// [`refresh_open_pulls`] given its two parts rather than the whole state, so
-/// the MCP server, which holds neither the state nor the sender, can be handed
-/// it ([`McpPullRefresher`]).
+/// The GitHub sender that reads this workspace's pull requests: its own
+/// connection, else the instance's for a workspace the operator opened. A
+/// workspace nothing serves is read for nothing. A connection that cannot be
+/// opened is logged and skipped until the next pass.
+async fn github_for_sweep(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+) -> Option<crate::connections::Resolved<dyn crate::github::GithubSender>> {
+    match state.github_for(workspace_id).await {
+        Ok(found) => found,
+        Err(err) => {
+            tracing::warn!(error = %err, workspace_id = %workspace_id.0, "change sweep: no GitHub sender for the workspace");
+            None
+        }
+    }
+}
+
+/// [`refresh_open_pulls`] given its parts rather than the whole state.
 pub async fn refresh_open_pulls_with(
     store: &dyn maidan_store::Store,
     sender: &dyn crate::github::GithubSender,
@@ -563,15 +578,17 @@ async fn closed_landing(
 
 /// The swarm-metrics refresh, handed to the MCP server so its
 /// `get_swarm_metrics` reads GitHub the way the route does.
+/// It resolves the workspace's own GitHub sender per call, so it holds the
+/// state ([`AppState::attach_pull_refresher`] sets it once the state is fully
+/// configured).
 pub struct McpPullRefresher {
-    pub store: std::sync::Arc<dyn maidan_store::Store>,
-    pub sender: std::sync::Arc<dyn crate::github::GithubSender>,
+    pub state: AppState,
 }
 
 #[async_trait::async_trait]
 impl maidan_mcp::OpenPullRefresher for McpPullRefresher {
     async fn refresh_open_pulls(&self, workspace_id: WorkspaceId) {
-        refresh_open_pulls_with(self.store.as_ref(), self.sender.as_ref(), workspace_id).await;
+        refresh_open_pulls(&self.state, workspace_id).await;
     }
 }
 
@@ -594,10 +611,10 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         if crate::suspension::held_back(state, workspace_id).await {
             continue;
         }
-        if let Some(sender) = state.github_sender.as_deref() {
+        if let Some(github) = github_for_sweep(state, workspace_id).await {
             refresh(
                 state.store.as_ref(),
-                sender,
+                github.sender.as_ref(),
                 workspace_id,
                 Some((state, &mut stats)),
             )
@@ -803,8 +820,16 @@ async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut
             .linear_issue
             .clone()
             .or_else(|| task.linear_issue.clone());
-        let (Some(issue), Some(sender)) = (issue, state.linear_sender.as_ref()) else {
+        let Some(issue) = issue else {
             continue;
+        };
+        let sender = match state.linear_for(workspace_id).await {
+            Ok(Some(linear)) => linear.sender,
+            Ok(None) => continue,
+            Err(err) => {
+                tracing::warn!(error = %err, "handoff: no Linear sender for the workspace");
+                continue;
+            }
         };
         if !matches!(
             state.store.linear_claim_comments(workspace_id).await,
@@ -899,9 +924,6 @@ pub fn handoff_packet(
 /// Queue the claim and release comments due in every workspace that turned
 /// them on ([`queue_linear_notice`]).
 pub async fn post_linear_notices(state: &AppState) -> usize {
-    let Some(sender) = state.linear_sender.as_ref() else {
-        return 0;
-    };
     let workspaces = match state
         .store
         .list_linear_claim_comment_workspaces(WORKSPACES_PER_TICK)
@@ -926,6 +948,17 @@ pub async fn post_linear_notices(state: &AppState) -> usize {
             Ok(due) => due,
             Err(err) => {
                 tracing::warn!(error = %err, "linear notices: due notices not read");
+                continue;
+            }
+        };
+        if due.is_empty() {
+            continue;
+        }
+        let sender = match state.linear_for(workspace_id).await {
+            Ok(Some(linear)) => linear.sender,
+            Ok(None) => continue,
+            Err(err) => {
+                tracing::warn!(error = %err, "linear notices: no Linear sender for the workspace");
                 continue;
             }
         };

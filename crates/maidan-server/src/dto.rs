@@ -1632,6 +1632,76 @@ pub struct AllowEgressTarget {
     pub selector: String,
 }
 
+/// Who serves a workspace on a surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionSource {
+    /// The workspace stored its own connection.
+    Workspace,
+    /// The workspace stored none, and the server's own credential serves it
+    /// because its operator opened it.
+    Instance,
+}
+
+/// Where a surface's deliveries to this workspace arrive, and whether the
+/// secret that verifies them is stored. Never the secret.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConnectionInbound {
+    pub url: String,
+    pub secret_set: bool,
+}
+
+/// One surface's connection, as `GET /workspaces/{wid}/connections` lists it.
+/// Never a token or a secret.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Connection {
+    pub surface: maidan_types::ConnectionSurface,
+    /// `null` when nothing serves the workspace on this surface.
+    pub source: Option<ConnectionSource>,
+    /// The account the stored token belongs to.
+    pub account: Option<String>,
+    pub connected_at: Option<DateTime<Utc>>,
+    /// `null` for Linear, which sends nothing in.
+    pub inbound: Option<ConnectionInbound>,
+}
+
+/// The body of `PUT /workspaces/{wid}/connections/{surface}`. A `token` is
+/// checked with the provider before it is stored. Sending only the inbound
+/// secret on a surface that already has a connection updates the secret and
+/// keeps the token.
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetConnection {
+    /// GitHub: a fine-grained personal access token. Slack: a bot token
+    /// (`xoxb-...`). Linear: an API key.
+    #[serde(default)]
+    pub token: Option<String>,
+    /// GitHub only: 16 to 128 characters with no whitespace. Verifies
+    /// `X-Hub-Signature-256` on the workspace's webhook.
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
+    /// Slack only: 16 to 128 characters with no whitespace. Verifies the
+    /// request signature on the workspace's events URL.
+    #[serde(default)]
+    pub signing_secret: Option<String>,
+}
+
+impl std::fmt::Debug for SetConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetConnection")
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "webhook_secret",
+                &self.webhook_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "signing_secret",
+                &self.signing_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
+}
+
 /// Link a GitHub issue/PR to a Maidan thread. `repo` is the `owner/name` full
 /// name; `channel_id`/`workspace_id` are derived from the thread.
 #[derive(Debug, Deserialize, ToSchema)]

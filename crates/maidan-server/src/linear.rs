@@ -123,6 +123,20 @@ impl LinearClient {
             .map(Self::new)
     }
 
+    /// The organization (else the user) this client's key belongs to
+    /// (`viewer`): the one call a workspace's key is checked with before it
+    /// is stored.
+    pub async fn identity(&self) -> Result<String, LinearError> {
+        let data = self
+            .call("query { viewer { name organization { name } } }", json!({}))
+            .await?;
+        str_at(&data, "/viewer/organization/name")
+            .or_else(|| str_at(&data, "/viewer/name"))
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| LinearError::Http("response without a viewer".into()))
+    }
+
     /// Run one GraphQL operation and return its `data`. Linear answers most
     /// errors with HTTP 200 and an `errors` array, so the body decides.
     async fn call(&self, query: &str, variables: Value) -> Result<Value, LinearError> {

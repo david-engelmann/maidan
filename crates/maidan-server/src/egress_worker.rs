@@ -207,6 +207,68 @@ async fn record_own_comment(
     }
 }
 
+/// A delivery for a workspace no credential serves on `surface`. Retried
+/// like a missing sender was: the workspace may connect before the row runs
+/// out of attempts.
+fn no_credential(surface: maidan_types::ConnectionSurface) -> DeliveryFailure {
+    DeliveryFailure {
+        message: format!(
+            "no credential serves this workspace on {}: {}",
+            surface.label(),
+            maidan_store::instance_credentials::refusal(surface)
+        ),
+        misconfiguration: false,
+        retry_after: None,
+    }
+}
+
+/// A workspace's connection that could not be read. One that cannot be
+/// opened is a misconfiguration no retry fixes, and the instance's credential
+/// is not lent in its place; a store fault is retried.
+fn connection_failure(err: crate::connections::ConnectionError) -> DeliveryFailure {
+    DeliveryFailure {
+        misconfiguration: matches!(err, crate::connections::ConnectionError::Unreadable { .. }),
+        message: err.to_string(),
+        retry_after: None,
+    }
+}
+
+/// The GitHub sender that acts for this workspace, or why none does.
+async fn github_sender(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<std::sync::Arc<dyn crate::github::GithubSender>, DeliveryFailure> {
+    match state.github_for(workspace_id).await {
+        Ok(Some(found)) => Ok(found.sender),
+        Ok(None) => Err(no_credential(maidan_types::ConnectionSurface::Github)),
+        Err(err) => Err(connection_failure(err)),
+    }
+}
+
+/// [`github_sender`] for Slack.
+async fn slack_sender(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<std::sync::Arc<dyn crate::slack::SlackSender>, DeliveryFailure> {
+    match state.slack_for(workspace_id).await {
+        Ok(Some(found)) => Ok(found.sender),
+        Ok(None) => Err(no_credential(maidan_types::ConnectionSurface::Slack)),
+        Err(err) => Err(connection_failure(err)),
+    }
+}
+
+/// [`github_sender`] for Linear.
+async fn linear_sender(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+) -> Result<std::sync::Arc<dyn crate::linear::LinearSender>, DeliveryFailure> {
+    match state.linear_for(workspace_id).await {
+        Ok(Some(found)) => Ok(found.sender),
+        Ok(None) => Err(no_credential(maidan_types::ConnectionSurface::Linear)),
+        Err(err) => Err(connection_failure(err)),
+    }
+}
+
 /// Post one claimed delivery through the sender for its surface.
 ///
 /// Projector rows always post. Result rows update in place when a stored
@@ -243,7 +305,7 @@ async fn deliver(
     if entry.kind == EgressKind::Notice {
         return deliver_notice(state, entry, target).await;
     }
-    deliver_projector(state, target, &entry.body)
+    deliver_projector(state, entry.workspace_id, target, &entry.body)
         .await
         .map(Sent::Landed)
 }
@@ -253,18 +315,13 @@ async fn deliver(
 /// that happens to share the issue.
 async fn deliver_projector(
     state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
     target: &EgressTarget,
     body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
     match target {
         EgressTarget::Slack { channel_id, .. } => {
-            let Some(sender) = state.slack_sender.as_ref() else {
-                return Err(DeliveryFailure {
-                    message: "no slack sender configured".into(),
-                    misconfiguration: false,
-                    retry_after: None,
-                });
-            };
+            let sender = slack_sender(state, workspace_id).await?;
             // Top-level: the projector egress relays a Maidan message into the
             // linked channel, and threading those under a parent would change
             // the behaviour.
@@ -284,13 +341,7 @@ async fn deliver_projector(
             }
         }
         EgressTarget::Github { repo, issue_number } => {
-            let Some(sender) = state.github_sender.as_ref() else {
-                return Err(DeliveryFailure {
-                    message: "no github sender configured".into(),
-                    misconfiguration: false,
-                    retry_after: None,
-                });
-            };
+            let sender = github_sender(state, workspace_id).await?;
             match sender.post_comment(repo, *issue_number, body).await {
                 Ok(reference) => {
                     crate::metrics::record_github_egress("sent");
@@ -345,10 +396,9 @@ async fn deliver_result(
             // never undo it, so their text is screened with the summary's:
             // a credential in any of them refuses the delivery before the
             // first post.
-            let posts_check_runs = state
-                .github_sender
-                .as_ref()
-                .is_some_and(|sender| sender.posts_check_runs());
+            let posts_check_runs = github_sender(state, entry.workspace_id)
+                .await
+                .is_ok_and(|sender| sender.posts_check_runs());
             let extras = github_extra_parts(state, entry.thread_id, posts_check_runs).await;
             let parts = std::iter::once(("comment", body.as_str()))
                 .chain(extras.iter().map(|(part, text)| (*part, text.as_str())));
@@ -387,9 +437,16 @@ async fn deliver_result(
             {
                 return Ok(Sent::Refused(reason));
             }
-            slack_result(state, row.as_ref(), channel_id, thread_ts.as_deref(), &body)
-                .await
-                .map(Sent::Landed)
+            slack_result(
+                state,
+                entry.workspace_id,
+                row.as_ref(),
+                channel_id,
+                thread_ts.as_deref(),
+                &body,
+            )
+            .await
+            .map(Sent::Landed)
         }
         EgressTarget::Linear { team_id, issue } => {
             let body = match crate::result_delivery::change_reply(
@@ -454,9 +511,16 @@ async fn deliver_notice(
                 "Slack channel {channel_id} is not in the workspace egress allowlist"
             )));
         }
-        return slack_result(state, None, channel_id, thread_ts.as_deref(), &entry.body)
-            .await
-            .map(Sent::Landed);
+        return slack_result(
+            state,
+            entry.workspace_id,
+            None,
+            channel_id,
+            thread_ts.as_deref(),
+            &entry.body,
+        )
+        .await
+        .map(Sent::Landed);
     }
     let EgressTarget::Linear { team_id, issue } = target else {
         return Err(DeliveryFailure {
@@ -465,13 +529,7 @@ async fn deliver_notice(
             retry_after: None,
         });
     };
-    let Some(sender) = state.linear_sender.as_ref() else {
-        return Err(DeliveryFailure {
-            message: "no linear sender configured".into(),
-            misconfiguration: false,
-            retry_after: None,
-        });
-    };
+    let sender = linear_sender(state, entry.workspace_id).await?;
     if !allowed(maidan_types::EgressSurface::Linear).await? {
         return Ok(Sent::Refused(format!(
             "Linear team {team_id} is not in the workspace egress allowlist"
@@ -533,13 +591,8 @@ async fn deliver_withdraw(
             retry_after: None,
         });
     };
-    let Some(sender) = state.github_sender.as_deref() else {
-        return Err(DeliveryFailure {
-            message: "github is not configured to write".into(),
-            misconfiguration: true,
-            retry_after: None,
-        });
-    };
+    let sender = github_sender(state, entry.workspace_id).await?;
+    let sender = sender.as_ref();
     let Some(git) = sender.git() else {
         return Err(DeliveryFailure {
             message: "github is not configured to write".into(),
@@ -649,13 +702,7 @@ async fn linear_result(
     issue: &str,
     body: &str,
 ) -> Result<Sent, DeliveryFailure> {
-    let Some(sender) = state.linear_sender.as_ref() else {
-        return Err(DeliveryFailure {
-            message: "no linear sender configured".into(),
-            misconfiguration: false,
-            retry_after: None,
-        });
-    };
+    let sender = linear_sender(state, entry.workspace_id).await?;
     let found = sender.issue(issue).await.map_err(linear_failure)?;
     if found.team_id != team_id {
         return Ok(Sent::Refused(format!(
@@ -819,13 +866,7 @@ async fn github_branch_result(
     repo: &str,
     branch: &str,
 ) -> Result<Sent, DeliveryFailure> {
-    let Some(sender) = state.github_sender.as_ref() else {
-        return Err(DeliveryFailure {
-            message: "no github sender configured".into(),
-            misconfiguration: false,
-            retry_after: None,
-        });
-    };
+    let sender = github_sender(state, entry.workspace_id).await?;
     let Some(git) = sender.git() else {
         return Err(DeliveryFailure {
             message: "the github sender cannot write branches".into(),
@@ -1204,13 +1245,7 @@ async fn github_result(
     issue_number: i64,
     body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
-    let Some(sender) = state.github_sender.as_ref() else {
-        return Err(DeliveryFailure {
-            message: "no github sender configured".into(),
-            misconfiguration: false,
-            retry_after: None,
-        });
-    };
+    let sender = github_sender(state, entry.workspace_id).await?;
     let reference =
         deliver_github_result_comment(sender.as_ref(), entry, row, repo, issue_number, body)
             .await?;
@@ -1472,18 +1507,13 @@ async fn recover_github_comment(
 
 async fn slack_result(
     state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
     row: Option<&ResultDelivery>,
     channel_id: &str,
     thread_ts: Option<&str>,
     body: &str,
 ) -> Result<Option<ExternalRef>, DeliveryFailure> {
-    let Some(sender) = state.slack_sender.as_ref() else {
-        return Err(DeliveryFailure {
-            message: "no slack sender configured".into(),
-            misconfiguration: false,
-            retry_after: None,
-        });
-    };
+    let sender = slack_sender(state, workspace_id).await?;
     if let Some(ExternalRef::Slack { ts, .. }) = row.and_then(|r| r.reference()) {
         match sender.update_message(channel_id, &ts, body).await {
             Ok(()) => {
@@ -1523,22 +1553,26 @@ async fn slack_result(
     }
 }
 
-/// Dead-letter a delivery without rescheduling it.
-/// Whether the server's own GitHub, Slack and Linear credentials serve this
-/// workspace (`maidan_store::instance_credentials`). A link a workspace made
-/// before that rule is neither sent through nor read into: the inbound
-/// handlers ask this before they copy a comment or a message into its thread.
-/// An origin that cannot be read counts as not served.
-pub(crate) async fn serves_workspace(
+/// End a result's delivery row as failed for `reason`, so it does not stay
+/// pending once the queue row behind it is dead.
+async fn fail_result_row(
     state: &AppState,
-    workspace_id: maidan_types::WorkspaceId,
-) -> bool {
-    matches!(
-        state.store.workspace_origin(workspace_id).await,
-        Ok(origin) if maidan_store::instance_credentials::serves(origin)
-    )
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+    reason: &str,
+) {
+    if let Ok(Some(row)) = state
+        .store
+        .get_result_delivery(entry.thread_id, target)
+        .await
+        && let Err(err) =
+            crate::result_delivery::record_unconfigured(state, &row, target, reason).await
+    {
+        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
+    }
 }
 
+/// Dead-letter a delivery without rescheduling it.
 async fn dead_letter(state: &AppState, entry: &EgressOutbox, error: &str) {
     if let Err(e) = state.store.mark_egress_failed(entry.id, error, None).await {
         tracing::warn!(error = %e, id = %entry.id, "egress worker: dead-letter failed");
@@ -1583,12 +1617,15 @@ async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTar
     dead_letter(state, entry, error).await;
     let disabled = match target {
         EgressTarget::Slack { channel_id, .. } => {
-            state.store.disable_slack_channel_link(channel_id).await
+            state
+                .store
+                .disable_slack_channel_link(entry.workspace_id, channel_id)
+                .await
         }
         EgressTarget::Github { repo, issue_number } => {
             state
                 .store
-                .disable_github_issue_link(repo, *issue_number)
+                .disable_github_issue_link(entry.workspace_id, repo, *issue_number)
                 .await
         }
         // No link backs a branch or a Linear target; the dead letter is the
@@ -1826,27 +1863,43 @@ async fn audit_result_attempt(
     .await;
 }
 
-/// The API host a delivery to `target` is posted to, for the retry budget.
-fn egress_host(state: &AppState, target: &EgressTarget) -> String {
-    match target {
-        EgressTarget::Slack { .. } => state.slack_sender.as_ref().map(|s| s.host()),
-        EgressTarget::Github { .. } | EgressTarget::GithubBranch { .. } => {
-            state.github_sender.as_ref().map(|s| s.host())
-        }
-        EgressTarget::Linear { .. } => state.linear_sender.as_ref().map(|s| s.host()),
-    }
-    .unwrap_or_else(|| target.surface().as_str().to_string())
+/// The API host a delivery to `target` is posted to, for the retry budget:
+/// the host of the sender that acts for the workspace.
+async fn egress_host(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+    target: &EgressTarget,
+) -> String {
+    let host = match target {
+        EgressTarget::Slack { .. } => state
+            .slack_for(workspace_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.sender.host()),
+        EgressTarget::Github { .. } | EgressTarget::GithubBranch { .. } => state
+            .github_for(workspace_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.sender.host()),
+        EgressTarget::Linear { .. } => state
+            .linear_for(workspace_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.sender.host()),
+    };
+    host.unwrap_or_else(|| target.surface().as_str().to_string())
 }
 
-/// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when no projector sender is
-/// configured — without one, every claim would fail and burn the queue's attempts
-/// against a deployment that simply has the projector turned off.
+/// Drain up to [`MAX_PER_TICK`] due deliveries. No-op when nothing could send:
+/// no sender of the server's own and no key to open the connections workspaces
+/// store. Without either, every claim would fail and burn the queue's attempts
+/// against a deployment that simply has the projectors turned off.
 pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
     let mut stats = EgressSweepStats::default();
-    if state.slack_sender.is_none()
-        && state.github_sender.is_none()
-        && state.linear_sender.is_none()
-    {
+    if !state.may_send_anywhere() {
         return stats;
     }
     for _ in 0..MAX_PER_TICK {
@@ -1885,40 +1938,49 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         // never be sent: it fails now, naming the setting, rather than
         // retrying against nothing.
         if entry.kind == EgressKind::Result
-            && let Some(reason) =
-                crate::result_delivery::unconfigured_reason(state, target.surface())
+            && let Some(reason) = crate::result_delivery::unconfigured_reason(
+                state,
+                entry.workspace_id,
+                target.surface(),
+            )
+            .await
         {
             dead_letter(state, &entry, &reason).await;
-            if let Ok(Some(row)) = state
-                .store
-                .get_result_delivery(entry.thread_id, &target)
-                .await
-                && let Err(err) =
-                    crate::result_delivery::record_unconfigured(state, &row, &target, &reason).await
-            {
-                tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-failed failed");
-            }
+            fail_result_row(state, &entry, &target, &reason).await;
             audit_result_attempt(state, &entry, Some(&target), "dead", Some(&reason)).await;
             crate::metrics::record_egress_delivery(surface, crate::metrics::EgressOutcome::Dead);
             stats.dead += 1;
             continue;
         }
-        // Every sender holds the server's own credential, which serves only a
-        // workspace its operator opened (`maidan_store::instance_credentials`).
-        // A row queued for any other workspace, through a link or an allowlist
-        // entry it made before that rule, is never sent.
-        match state.store.workspace_origin(entry.workspace_id).await {
-            Ok(origin) if maidan_store::instance_credentials::serves(origin) => {}
-            Ok(_) => {
-                let error = maidan_store::instance_credentials::REFUSAL;
-                dead_letter(state, &entry, error).await;
+        // A row queued for a workspace no credential serves on its surface (a
+        // link or an allowlist entry made while one did, or before the rule)
+        // is never sent: the server's own credential serves only a workspace
+        // its operator opened, and the workspace has none of its own.
+        match state
+            .store
+            .workspace_served_on(
+                entry.workspace_id,
+                maidan_types::ConnectionSurface::for_egress(target.surface()),
+            )
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                let error = no_credential(maidan_types::ConnectionSurface::for_egress(
+                    target.surface(),
+                ))
+                .message;
+                dead_letter(state, &entry, &error).await;
                 tracing::warn!(id = %entry.id, %error, "egress worker: dead-lettered");
                 crate::metrics::record_egress_delivery(
                     surface,
                     crate::metrics::EgressOutcome::Refused,
                 );
                 if entry.kind == EgressKind::Result {
-                    audit_result_attempt(state, &entry, Some(&target), "dead", Some(error)).await;
+                    // The result's own row ends too, as it does when no sender
+                    // exists, or it would stay pending for good.
+                    fail_result_row(state, &entry, &target, &error).await;
+                    audit_result_attempt(state, &entry, Some(&target), "dead", Some(&error)).await;
                 }
                 stats.dead += 1;
                 continue;
@@ -1965,7 +2027,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         if let Some(until) = deferred_until(
             &state.retry_budget,
             "egress",
-            &egress_host(state, &target),
+            &egress_host(state, entry.workspace_id, &target).await,
             attempt,
         ) {
             if let Err(err) = state.store.defer_egress(entry.id, until).await {

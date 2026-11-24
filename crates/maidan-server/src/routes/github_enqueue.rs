@@ -349,11 +349,26 @@ fn checked_request(repo: &str, pull_number: i64) -> ApiResult<String> {
     Ok(repo)
 }
 
-fn writer(state: &AppState) -> ApiResult<&dyn GithubGit> {
-    state
-        .github_sender
-        .as_ref()
-        .and_then(|sender| sender.git())
+/// The sender that writes to GitHub for this workspace: its own connection,
+/// else the instance's for a workspace the operator opened.
+async fn writer(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+) -> ApiResult<std::sync::Arc<dyn crate::github::GithubSender>> {
+    let not_configured = || ApiError::Internal("github is not configured to write".into());
+    let github = state
+        .github_for(workspace_id)
+        .await
+        .map_err(|err| ApiError::Internal(err.to_string()))?
+        .ok_or_else(not_configured)?;
+    github.sender.git().ok_or_else(not_configured)?;
+    Ok(github.sender)
+}
+
+/// The write half of a sender [`writer`] returned.
+fn git_of(sender: &std::sync::Arc<dyn crate::github::GithubSender>) -> ApiResult<&dyn GithubGit> {
+    sender
+        .git()
         .ok_or_else(|| ApiError::Internal("github is not configured to write".into()))
 }
 
@@ -379,7 +394,8 @@ pub async fn enqueue_pull(
     }
     let repo = checked_request(&body.repo, body.pull_number)?;
     let pull_number = body.pull_number;
-    let git = writer(&state)?;
+    let sender = writer(&state, auth.workspace_id()).await?;
+    let git = git_of(&sender)?;
     match enqueue_pull_guarded(
         state.store.as_ref(),
         auth.workspace_id(),
@@ -453,7 +469,8 @@ pub async fn enqueue_status(
             ))
         })?
         .to_string();
-    let brief = writer(&state)?
+    let sender = writer(&state, auth.workspace_id()).await?;
+    let brief = git_of(&sender)?
         .pull_brief(&repo, query.pull_number)
         .await
         .map_err(github_api_error)?;
@@ -489,7 +506,8 @@ pub async fn dequeue_pull(
     }
     let repo = checked_request(&query.repo, query.pull_number)?;
     let pull_number = query.pull_number;
-    let git = writer(&state)?;
+    let sender = writer(&state, auth.workspace_id()).await?;
+    let git = git_of(&sender)?;
     match dequeue_pull_guarded(
         state.store.as_ref(),
         auth.workspace_id(),

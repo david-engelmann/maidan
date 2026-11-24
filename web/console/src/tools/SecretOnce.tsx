@@ -13,7 +13,14 @@ export function secretView(copied: SecretCopied, shown: boolean, secret: string,
   return { copied, shown, seen };
 }
 
-export function SecretOnce({ title, secret, onDone }: { title: string; secret: string; onDone: () => void }) {
+/** The default sentence is right for a token, which the server keeps only as a hash. */
+const KEPT_AS_HASH = "Shown once. Copy it now: the server keeps only a hash, so it cannot show it again.";
+
+/**
+ * `note` replaces that sentence for a secret the server keeps in a form it can
+ * use (a webhook's signing secret is stored encrypted, not hashed).
+ */
+export function SecretOnce({ title, secret, onDone, note = KEPT_AS_HASH }: { title: string; secret: string; onDone: () => void; note?: string }) {
   const [copied, setCopied] = useState<SecretCopied>("no");
   const [shown, setShown] = useState(false);
   const [seen, setSeen] = useState(secret);
@@ -45,7 +52,7 @@ export function SecretOnce({ title, secret, onDone }: { title: string; secret: s
   return (
     <div className="secret-once" role="region" aria-label={title} tabIndex={-1} ref={box}>
       <b>{title}</b>
-      <p className="small">Shown once. Copy it now: the server keeps only a hash, so it cannot show it again.</p>
+      <p className="small">{note}</p>
       <code className="secret-value" aria-label={view.shown ? "The secret" : "The secret, hidden"}>{view.shown ? secret : "•".repeat(Math.min(secret.length, 32))}</code>
       <div className="row-form">
         <button type="button" className="button steel" onClick={() => void copy()}>{view.copied === "yes" ? "Copied" : "Copy"}</button>

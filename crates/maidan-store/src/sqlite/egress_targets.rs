@@ -27,13 +27,16 @@ pub(crate) async fn allow_on(
 ) -> Result<AllowedEgressTarget, StoreError> {
     validate_allowlist_selector(new.surface, &new.selector)
         .map_err(|why| StoreError::InvalidInput(why.to_string()))?;
-    // The server's own credentials serve only a workspace its operator opened
-    // (`instance_credentials`). Checked here, on the connection that writes,
-    // so the audited and the plain blessing cannot differ.
-    let origin = super::import::origin_on(&mut *conn, new.workspace_id)
-        .await?
-        .ok_or(StoreError::NotFound)?;
-    crate::instance_credentials::ensure_served(origin)?;
+    // A destination is blessed only where a credential can serve the workspace:
+    // its own connection, or the operator's for a workspace the operator
+    // opened (`instance_credentials`). Checked here, on the connection that
+    // writes, so the audited and the plain blessing cannot differ.
+    super::import::ensure_served_on(
+        &mut *conn,
+        new.workspace_id,
+        maidan_types::ConnectionSurface::for_egress(new.surface),
+    )
+    .await?;
     let id = EgressTargetId::new();
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
@@ -92,9 +95,9 @@ pub(crate) async fn revoke_on(
     Ok(res.rows_affected() > 0)
 }
 
-/// Whether the destination is blessed for a workspace the server's own
-/// credentials serve. An entry a sign-up or sandbox workspace made before
-/// `instance_credentials` refused them counts for nothing.
+/// Whether the destination is blessed for a workspace a credential serves
+/// on that surface (`instance_credentials`). An entry a workspace made while
+/// none served it counts for nothing until one does.
 pub async fn is_allowed(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -106,11 +109,14 @@ pub async fn is_allowed(
          WHERE workspace_id = ? AND surface = ? AND selector = ?
            AND EXISTS (SELECT 1 FROM maidan_workspaces w
                        WHERE w.id = maidan_egress_targets.workspace_id
-                         AND w.origin = 'operator')",
+                         AND (w.origin = 'operator'
+                              OR EXISTS (SELECT 1 FROM maidan_secrets s
+                                         WHERE s.workspace_id = w.id AND s.name = ?)))",
     )
     .bind(workspace_id.0)
     .bind(surface.as_str())
     .bind(selector)
+    .bind(maidan_types::ConnectionSurface::for_egress(surface).secret_name())
     .fetch_optional(pool)
     .await?;
     Ok(row.is_some())

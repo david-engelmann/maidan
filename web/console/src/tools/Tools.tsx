@@ -1,8 +1,9 @@
 // Tools: what the classic board kept on its Tools tabs, minus the gates
 // Needs you already answers. Inbox and Preferences are the signed-in
 // member's own; Deliveries (where results went, the allowlist that lets them
-// go there, and webhook and automation sends) and Commands are the
-// workspace's; Explore reads
+// go there), Integrations (its own GitHub, Slack and Linear accounts, and its
+// outbound webhooks with what they sent) and Commands are the workspace's;
+// Explore reads
 // queues, schedules, events and peers; Operator is the server-wide audit and
 // reindex, listed only for a credential that holds them;
 // Search finds messages; Workspace renames, switches, and adds channels,
@@ -83,6 +84,8 @@ import { consolePushManager, installStore, promptInstall } from "../pwa/install.
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
 import { peekPaletteIndex } from "../shell/paletteIndex.ts";
 import { Connect } from "./Connect.tsx";
+import { Connections } from "./Connections.tsx";
+import { Webhooks } from "./Webhooks.tsx";
 import { DecisionModel } from "./DecisionModel.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 import { useScrollFade } from "../hooks/useScrollFade.ts";
@@ -91,6 +94,7 @@ export const TOOL_TABS = [
   { id: "inbox", title: "Inbox" },
   { id: "prefs", title: "Preferences" },
   { id: "deliveries", title: "Deliveries" },
+  { id: "integrations", title: "Integrations" },
   { id: "commands", title: "Commands" },
   { id: "search", title: "Search" },
   { id: "workspace", title: "Workspace" },
@@ -137,6 +141,7 @@ export function Tools() {
       {tab === "inbox" ? <Inbox api={api} me={me} ws={ws} /> : null}
       {tab === "prefs" ? <Prefs api={api} me={me} ws={ws} /> : null}
       {tab === "deliveries" ? <DeliveriesTab api={api} ws={ws} /> : null}
+      {tab === "integrations" ? <IntegrationsTab api={api} ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
       {tab === "search" ? <Search api={api} ws={ws} /> : null}
       {tab === "workspace" ? <Workspace api={api} ws={ws} /> : null}
@@ -614,6 +619,20 @@ function DeliveriesTab({ api, ws }: { api: ToolsApi; ws: string | null }) {
     <div className="tool-grid">
       <ResultDeliveries api={api} ws={ws} />
       <Allowlist api={api} ws={ws} />
+    </div>
+  );
+}
+
+/**
+ * The workspace's outside services: its own GitHub, Slack and Linear
+ * accounts, then the webhooks that post events out, with the list of what
+ * those webhooks and automations sent beside them.
+ */
+function IntegrationsTab({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  return (
+    <div className="tool-grid">
+      <Connections ws={ws} />
+      <Webhooks ws={ws} />
       <HookDeliveries api={api} ws={ws} />
     </div>
   );
@@ -791,7 +810,7 @@ function HookDeliveries({ api, ws }: { api: ToolsApi; ws: string | null }) {
   const list = useLoad(ws ? `${ws}|${kind}|${status}` : null, () => api.deliveries(ws ?? "", kind, status));
   const { busy, act } = useAct();
   return (
-    <Panel title="Webhooks and automations">
+    <Panel title="Webhook and automation sends" wide>
       <div className="row-form">
         <label className="field">Kind<select value={kind} onChange={(e) => setKind(e.target.value)}>{DELIVERY_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></label>
         <div className="seg" role="radiogroup" aria-label="Status">

@@ -452,6 +452,8 @@ pub async fn seed_victim(h: &Harness, doc: &Value) -> Victim {
         ids: BTreeMap::new(),
     };
     victim.ids.insert("workspaces".into(), ws.0.to_string());
+    // A connection is addressed by its surface, a closed set, not by an id.
+    victim.ids.insert("connections".into(), "github".into());
     // `members` is the owner, so self-scoped kinds (skills, push
     // subscriptions, notifications) can be created under it.
     victim.ids.insert("members".into(), owner.0.to_string());

@@ -1332,6 +1332,42 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/connections",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/ui/api/workspaces/{wid}/connections/{surface}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/connections/{surface}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/workspaces/{wid}/webhooks",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/ui/api/workspaces/{wid}/webhooks",
+    "capability": "workspace:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/ui/api/workspaces/{wid}/webhooks/{whid}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/ui/api/channels/{cid}/threads",
     "capability": "workspace:write",
@@ -2088,6 +2124,24 @@
   {
     "method": "DELETE",
     "path": "/workspaces/{wid}/egress-targets/{tid}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/connections",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{wid}/connections/{surface}",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{wid}/connections/{surface}",
     "capability": "token:admin",
     "surface": "http"
   },

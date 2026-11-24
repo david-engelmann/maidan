@@ -18,11 +18,9 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
         "INSERT INTO maidan_github_issue_links
            (repo, issue_number, workspace_id, channel_id, thread_id, member_id, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, now())
-         ON CONFLICT (repo, issue_number) DO UPDATE
-           SET workspace_id = EXCLUDED.workspace_id, channel_id = EXCLUDED.channel_id,
-               thread_id = EXCLUDED.thread_id, member_id = EXCLUDED.member_id,
-               disabled_at = NULL
-           WHERE maidan_github_issue_links.workspace_id = EXCLUDED.workspace_id
+         ON CONFLICT (workspace_id, repo, issue_number) DO UPDATE
+           SET channel_id = EXCLUDED.channel_id, thread_id = EXCLUDED.thread_id,
+               member_id = EXCLUDED.member_id, disabled_at = NULL
          RETURNING {COLS}"
     ))
     .bind(&new.repo)
@@ -31,12 +29,10 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
     .bind(new.channel_id.0)
     .bind(new.thread_id.0)
     .bind(new.member_id.0)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await
     .map_err(map_link_err)?;
-    row.as_ref()
-        .map(row_to_link)
-        .ok_or_else(|| StoreError::Conflict("already linked by another workspace".into()))
+    Ok(row_to_link(&row))
 }
 
 /// The only uniqueness this insert can violate is the one-link-per-thread index
@@ -53,19 +49,45 @@ fn map_link_err(err: sqlx::Error) -> StoreError {
     StoreError::Database(err)
 }
 
+/// The workspace's own link for a GitHub issue or pull request.
 pub async fn get(
     pool: &PgPool,
+    workspace_id: WorkspaceId,
     repo: &str,
     issue_number: i64,
 ) -> Result<Option<GithubIssueLink>, StoreError> {
     let row = sqlx::query(&format!(
-        "SELECT {COLS} FROM maidan_github_issue_links WHERE repo = $1 AND issue_number = $2"
+        "SELECT {COLS} FROM maidan_github_issue_links
+         WHERE workspace_id = $1 AND repo = $2 AND issue_number = $3"
     ))
+    .bind(workspace_id.0)
     .bind(repo)
     .bind(issue_number)
     .fetch_optional(pool)
     .await?;
     Ok(row.as_ref().map(row_to_link))
+}
+
+/// The links for a GitHub issue or pull request in the workspaces `scope`
+/// reaches, for an inbound delivery.
+pub async fn list_for_issue(
+    pool: &PgPool,
+    scope: maidan_types::InboundScope,
+    repo: &str,
+    issue_number: i64,
+) -> Result<Vec<GithubIssueLink>, StoreError> {
+    let sql = format!(
+        "SELECT {COLS} FROM maidan_github_issue_links
+         WHERE repo = $1 AND issue_number = $2 AND {} ORDER BY created_at",
+        crate::inbound_scope::clause(scope, "workspace_id", "$3")
+    );
+    let query = sqlx::query(&sql).bind(repo).bind(issue_number);
+    let query = match crate::inbound_scope::bind(scope) {
+        crate::inbound_scope::Bind::Workspace(id) => query.bind(id),
+        crate::inbound_scope::Bind::Secret(name) => query.bind(name),
+    };
+    let rows = query.fetch_all(pool).await?;
+    Ok(rows.iter().map(row_to_link).collect())
 }
 
 /// The egress reverse lookup: the link for a Maidan thread.
@@ -95,23 +117,38 @@ pub async fn list(
     Ok(rows.iter().map(row_to_link).collect())
 }
 
-pub async fn unlink(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
-    let res =
-        sqlx::query("DELETE FROM maidan_github_issue_links WHERE repo = $1 AND issue_number = $2")
-            .bind(repo)
-            .bind(issue_number)
-            .execute(pool)
-            .await?;
+pub async fn unlink(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    issue_number: i64,
+) -> Result<bool, StoreError> {
+    let res = sqlx::query(
+        "DELETE FROM maidan_github_issue_links
+         WHERE workspace_id = $1 AND repo = $2 AND issue_number = $3",
+    )
+    .bind(workspace_id.0)
+    .bind(repo)
+    .bind(issue_number)
+    .execute(pool)
+    .await?;
     Ok(res.rows_affected() > 0)
 }
 
 /// Turn egress to this issue/PR off. Idempotent: an already-disabled link keeps
 /// its original timestamp. Returns whether this call did the disabling.
-pub async fn disable(pool: &PgPool, repo: &str, issue_number: i64) -> Result<bool, StoreError> {
+pub async fn disable(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    issue_number: i64,
+) -> Result<bool, StoreError> {
     let res = sqlx::query(
         "UPDATE maidan_github_issue_links SET disabled_at = now()
-         WHERE repo = $1 AND issue_number = $2 AND disabled_at IS NULL",
+         WHERE workspace_id = $1 AND repo = $2 AND issue_number = $3
+           AND disabled_at IS NULL",
     )
+    .bind(workspace_id.0)
     .bind(repo)
     .bind(issue_number)
     .execute(pool)

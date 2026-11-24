@@ -391,6 +391,113 @@ ready or queue them for merge (`MAIDAN_MARK_READY_APP_ID` and friends in
 A refused change is recorded as `skipped` with its reason
 (`GET /threads/:id/deliveries`) and said in the Slack thread.
 
+### Connect a workspace's own GitHub, Slack and Linear
+
+A connection is one workspace's own credential for one surface (`github`,
+`slack` or `linear`). A workspace that connects a surface delivers results to
+it, links tasks to it and reads its inbound events with its own account. A
+workspace opened by sign-up or as a demo is never served by the server's own
+credentials, so a connection is how it reaches these services at all.
+
+**The rule.** A workspace is served on a surface when it stores its own
+connection for it, or when the operator opened it and the server holds a
+credential for that surface. When the workspace has its own connection, that
+connection is always the one used. The server's credential is never used for a
+workspace that the operator did not open. `github` also covers the
+`github_branch` destination. Linking, watching or delivering on a surface the
+workspace is not served on is refused with `connect GitHub for this workspace
+first (Tools, Integrations)`, naming the surface.
+
+| Surface | Token | What it needs |
+|---|---|---|
+| GitHub | A fine-grained personal access token | The repository permissions listed under **The GitHub token** above, on exactly the repositories the workspace delivers to. **Contents** and **Pull requests** (read and write) are the minimum for the change flow. Add **Actions** and **Commit statuses** (read) for CI notices, **Commit statuses** (read and write) for a change result's check, and **Workflows** (read and write) for a change that touches `.github/workflows/`. |
+| Slack | A bot token, starting `xoxb-` | The `chat:write` scope, and the bot added to each channel it posts to. |
+| Linear | An API key | Access to read and write issues and comments in the teams the workspace delivers to. |
+
+The account behind the token is the identity Maidan acts as, so a token made
+for this purpose keeps the workspace's activity apart from anyone's own.
+
+**In the console.** A workspace admin opens Tools, Integrations, and finds the
+section GitHub, Slack and Linear. Each of its three rows says whether it is connected with the workspace's own account (with
+the account and the date), using the server's own connection, or not
+connected. Paste the token into the row's field and choose **Connect**. The
+field takes the token once and is empty afterwards. **Replace** sends a new
+token, and **Remove** asks first, then deletes the workspace's own connection.
+Anyone who is not a workspace admin sees a sentence saying so.
+
+**By REST.** `PUT` stores a connection and needs `token:admin`:
+
+```bash
+URL="$MAIDAN_URL/workspaces/$WORKSPACE_ID/connections"
+H1="Authorization: Bearer $ADMIN_TOKEN"; H2='Content-Type: application/json'
+curl -sS -X PUT "$URL/github" -H "$H1" -H "$H2" \
+  -d '{"token":"github_pat_REPLACE_ME","webhook_secret":"replace-with-16-to-128-characters"}'
+curl -sS -X PUT "$URL/slack" -H "$H1" -H "$H2" \
+  -d '{"token":"xoxb-REPLACE-ME","signing_secret":"replace-with-the-apps-signing-secret"}'
+curl -sS -X PUT "$URL/linear" -H "$H1" -H "$H2" -d '{"token":"lin_api_REPLACE_ME"}'
+```
+
+`GET "$URL"` lists the three surfaces in the order GitHub, Slack, Linear. Each
+row has `source` (`workspace`, `instance` or `null`), `account`,
+`connected_at` and, for GitHub and Slack, `inbound`. `DELETE "$URL/<surface>"`
+removes the workspace's own connection and answers `204` whether or not there
+was one. An unknown surface is a `404`.
+
+**The token is checked and never shown again.** Before it is stored, Maidan
+asks the provider who the token belongs to (GitHub `GET /user`, Slack
+`auth.test`, Linear `viewer`). A token the provider refuses is a `400` that
+carries the provider's own reason, and nothing is stored. The account the
+provider names is what `account` shows. The token is stored encrypted as a
+workspace secret under a name only the server can read, which needs
+`FEDERATION_ENCRYPTION_KEY` on the instance. Without it the call answers `503`
+and names the setting. No route, tool or secret substitution returns a stored
+token or secret.
+
+**The inbound URL and secret.** For GitHub and Slack, each row also carries
+the URL the provider posts events to and whether the workspace has stored the
+secret that signs them. The URL is built from `MAIDAN_PUBLIC_ORIGIN`. Without
+it the row carries a path, and the console puts its own origin in front. Sending
+a secret alone to a surface that already has a connection updates the secret
+and keeps the token.
+
+- **GitHub.** In the repository's Settings, Webhooks, add a webhook. Set the
+  payload URL to `$MAIDAN_URL/workspaces/$WORKSPACE_ID/connections/github/webhook`,
+  the content type to `application/json` and the secret to the
+  `webhook_secret` you stored. Under the events to send, choose individual
+  events and tick Issue comments, Pull requests, Workflow runs, Check suites,
+  Check runs and Statuses. GitHub's first delivery is a `ping`, which Maidan
+  answers once the signature checks out.
+- **Slack.** In the app's Event Subscriptions, enable events and set the
+  request URL to `$MAIDAN_URL/workspaces/$WORKSPACE_ID/connections/slack/events`.
+  Maidan answers Slack's URL check. The `signing_secret` is the one on the
+  app's Basic Information page. Under Subscribe to bot events, add
+  `message.channels`, and `message.groups` for private channels. Invite the bot
+  to each channel it should read.
+- **Linear** has no inbound URL.
+
+Each inbound route needs no bearer token. It answers `404`, with one fixed body,
+when the workspace does not exist, has no connection for the surface or has
+stored no secret for it, so the three cannot be told apart and the route does
+not reveal which workspaces exist. A signature that does not match is a `401`.
+Slack's timestamp must be within five minutes.
+
+**Who hears of a delivery.** A link belongs to the workspace that made it, so
+two workspaces can link the same Slack channel or the same GitHub issue and
+neither learns of the other. A delivery to a workspace's own URL reaches that
+workspace's links and watches and nobody else's. The server's own routes,
+`/integrations/slack/events` and `/integrations/github/events`, reach the
+links of the workspaces its credential serves, which are the workspaces the
+operator opened that stored no connection of their own for that surface. A
+workspace that connected its own account hears of events on its own URL only.
+
+**Echoes.** A comment Maidan posts to GitHub with the workspace's token comes
+back as a webhook, and Maidan posts nothing for it. Messages a Slack bot made
+are skipped too. Other people's comments and messages, including the token
+owner's own, are posted into the linked thread.
+
+A workspace's egress allowlist, below, still decides which destinations a
+result may reach.
+
 ### The egress allowlist
 
 Nothing is allowed by default. Each workspace blesses its targets with audited
@@ -446,6 +553,15 @@ at-least-once; rows that use up their attempts are quarantined.
 `GET /workspaces/:wid/deliveries?kind=webhook|automation|all` lists them
 (`workspace:read`) and `POST …/deliveries/:did/replay?kind=…` retries one
 (`workspace:write`). Watch `maidan_automation_delivery_total{outcome="failure"}`.
+
+In the console, Tools, Integrations lists a workspace's webhooks, adds and
+revokes them, and lists these sends beside them
+([Webhooks](Integration%20Reference.md#webhooks)).
+A webhook made in the console acts as one of the signed-in admin's own tokens
+that holds `workspace:admin` and `workspace:read`, and ends when that token is
+revoked or the member is deactivated, as a webhook made with that token does.
+The console makes no token for it, and an admin who holds no such token is
+refused.
 
 ### A2A over gRPC
 

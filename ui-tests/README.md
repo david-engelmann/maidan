@@ -59,6 +59,7 @@ its PNG is not written.
 | Needs you | `console.spec.ts` |
 | OAuth consent lands on the client redirect | `oauth-consent.spec.ts` |
 | Cancel from the task sheet, Close as abandoned from the thread view | `console-end-task.spec.ts` |
+| Tools, Integrations: a workspace's GitHub connection (bad token, connect, reload, disconnect) and an outbound webhook, in both themes and on a phone | `console-connections.spec.ts` |
 
 **Every console change that reaches the server should land with a spec here.**
 

@@ -134,6 +134,7 @@ impl LinearSender for Unsent {
 }
 
 struct Harness {
+    pool: sqlx::SqlitePool,
     store: Arc<dyn Store>,
     state: AppState,
     workspace_id: maidan_types::WorkspaceId,
@@ -164,7 +165,8 @@ async fn harness_without_senders(name: &str) -> Harness {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(64));
@@ -203,6 +205,7 @@ async fn harness_without_senders(name: &str) -> Harness {
         .await
         .unwrap();
     Harness {
+        pool,
         store,
         state,
         workspace_id: ws.id,
@@ -746,6 +749,54 @@ async fn a_queued_result_whose_sender_is_gone_fails_when_the_worker_picks_it_up(
         Some("Slack delivery is not configured on this server (MAIDAN_SLACK_BOT_TOKEN)")
     );
     assert_eq!(failed_events(&h).await.len(), 1);
+    assert!(claim_body(&h).await.is_none(), "the queue entry is dead");
+}
+
+#[tokio::test]
+async fn a_queued_result_for_a_workspace_nothing_serves_any_more_ends_failed_naming_why() {
+    let h = harness("unserved").await;
+    bless_slack(&h, "C0123ABCDEF").await;
+    set_and_route(
+        &h,
+        &envelope(
+            "reviewed",
+            json!([{ "surface": "slack", "channel": "C0123ABCDEF" }]),
+            "rendered",
+            "summary",
+        ),
+        1,
+    )
+    .await;
+    assert_eq!(
+        h.store.list_result_deliveries(h.thread_id).await.unwrap()[0].status,
+        status::PENDING
+    );
+    // The workspace stops being one the server's credentials serve, and it has
+    // no connection of its own.
+    sqlx::query("UPDATE maidan_workspaces SET origin = 'signup' WHERE id = ?")
+        .bind(h.workspace_id.0)
+        .execute(&h.pool)
+        .await
+        .unwrap();
+
+    let stats = egress_worker::sweep_once(&h.state).await;
+
+    assert_eq!(stats.dead, 1, "{stats:?}");
+    assert_eq!(stats.sent, 0, "{stats:?}");
+    let rows = h.store.list_result_deliveries(h.thread_id).await.unwrap();
+    assert_eq!(
+        rows[0].status,
+        status::FAILED,
+        "the result stayed pending: {rows:?}"
+    );
+    assert!(
+        rows[0]
+            .last_error
+            .as_deref()
+            .is_some_and(|e| e.contains("no credential serves this workspace on Slack")),
+        "{:?}",
+        rows[0].last_error
+    );
     assert!(claim_body(&h).await.is_none(), "the queue entry is dead");
 }
 

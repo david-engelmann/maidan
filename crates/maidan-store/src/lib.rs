@@ -152,6 +152,7 @@ pub mod credit_terms;
 pub mod custody;
 mod delegation_grants;
 mod footprints;
+mod inbound_scope;
 pub mod instance_credentials;
 pub mod thread_digest;
 #[macro_use]
