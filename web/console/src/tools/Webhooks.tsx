@@ -51,7 +51,7 @@ function WebhooksPanel({ ws }: { ws: string | null }) {
   const shell = (body: ReactNode) => (
     <section ref={panel} tabIndex={-1} aria-labelledby="webhooks-title" className="card tool-panel wide">
       <div className="panel-head">
-        <h2 id="webhooks-title">Webhooks</h2>
+        <h2 id="webhooks-title">Outbound webhooks</h2>
       </div>
       {body}
     </section>
@@ -126,7 +126,7 @@ function WebhooksPanel({ ws }: { ws: string | null }) {
 
   return shell(
     <>
-      <p className="muted small">A webhook is a URL Maidan posts matching events to as they happen in this workspace. It receives every matching event, private channels and direct messages included.</p>
+      <p className="muted small">An outbound webhook is a URL you run that Maidan posts this workspace’s events to as they happen. It receives every matching event, private channels and direct messages included.</p>
       {list.error ? <p className="err small" role="alert">This may be out of date. The last read failed. {list.error}</p> : null}
       {secret ? (
         <SecretOnce

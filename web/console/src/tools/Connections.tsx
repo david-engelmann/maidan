@@ -193,7 +193,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
           </div>
           {info?.secret ? (
             <div className="field grow">
-              <label htmlFor={`${id}-secret`}>{`${info.secret.label} (optional)`}</label>
+              <label htmlFor={`${id}-secret`}>{`${info.secret.label} (for inbound events)`}</label>
               <input
                 id={`${id}-secret`}
                 type="password"
@@ -202,7 +202,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
                 autoComplete="off"
                 spellCheck={false}
                 autoCapitalize="none"
-                placeholder={own ? "Leave empty to keep the current one" : "Paste it here"}
+                placeholder={own && row.inbound?.secret_set ? "Leave empty to keep it" : "Paste it here"}
                 aria-describedby={`${id}-secret-hint`}
               />
               <span className="muted small" id={`${id}-secret-hint`}>{info.secret.hint}</span>

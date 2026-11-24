@@ -24,6 +24,12 @@
 .webhook-group[open] { padding-bottom: var(--space-2); }
 .webhook-group summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 44px; cursor: pointer; font-size: var(--text-md); }
 .webhook-group summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: var(--r-md); }
+/* A group opens. The summary is a flex row, which drops the browser's own
+   marker, so it draws one: a chevron that turns when the group is open. */
+.webhook-group summary { justify-content: flex-start; }
+.webhook-group summary > .small { margin-left: auto; }
+.webhook-group summary::before { content: ""; flex: none; width: var(--space-2); height: var(--space-2); border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 120ms; }
+.webhook-group[open] summary::before { transform: rotate(45deg); }
 .webhook-all { font-weight: 600; }
 .webhook-event-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0 var(--space-4); }
 .webhook-row { flex-wrap: wrap; }

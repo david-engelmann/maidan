@@ -98,8 +98,8 @@ test("the token field is a password field, and the connect button waits for a to
   await renderSignedIn(<Connections ws="ws" />, router.fn);
   const input = (await within(await waitRow("github")).findByLabelText("Fine-grained personal access token")) as HTMLInputElement;
   expect(input.type).toBe("password");
-  expect((within(rowOf("github")).getByLabelText("Webhook secret (optional)") as HTMLInputElement).type).toBe("password");
-  expect((within(rowOf("slack")).getByLabelText("Signing secret (optional)") as HTMLInputElement).type).toBe("password");
+  expect((within(rowOf("github")).getByLabelText("Webhook secret (for inbound events)") as HTMLInputElement).type).toBe("password");
+  expect((within(rowOf("slack")).getByLabelText("Signing secret (for inbound events)") as HTMLInputElement).type).toBe("password");
   expect((within(rowOf("linear")).getByLabelText("API key") as HTMLInputElement).type).toBe("password");
   expect((within(rowOf("github")).getByRole("button", { name: "Connect GitHub" }) as HTMLButtonElement).disabled).toBe(true);
 });
@@ -126,14 +126,14 @@ test("connecting sends the token once, clears the field, and the token is nowher
   await renderSignedIn(<Connections ws="ws" />, fn);
   const gh = within(await waitRow("github"));
   await user.type(gh.getByLabelText("Fine-grained personal access token"), `  ${TOKEN} `);
-  await user.type(gh.getByLabelText("Webhook secret (optional)"), SECRET);
+  await user.type(gh.getByLabelText("Webhook secret (for inbound events)"), SECRET);
   await user.click(gh.getByRole("button", { name: "Connect GitHub" }));
   await gh.findByText(/Connected with this workspace’s own GitHub account, octocat/);
   expect(bodies).toEqual([{ method: "PUT", url: "https://console.test/ui/api/workspaces/ws/connections/github", body: JSON.stringify({ token: TOKEN, webhook_secret: SECRET }) }]);
   expect(router.calls.filter((c) => LIST.test(c.url)).length).toBe(2);
   // The fields are empty and the secrets are in no node, attribute or notice.
   expect((gh.getByLabelText("Replace the fine-grained personal access token") as HTMLInputElement).value).toBe("");
-  expect((gh.getByLabelText("Webhook secret (optional)") as HTMLInputElement).value).toBe("");
+  expect((gh.getByLabelText("Webhook secret (for inbound events)") as HTMLInputElement).value).toBe("");
   expect(document.body.innerHTML).not.toContain(TOKEN);
   expect(document.body.innerHTML).not.toContain(SECRET);
   expect(notices.snapshot().map((n) => n.text)).toEqual(["GitHub connected as octocat"]);
@@ -174,7 +174,7 @@ test("a webhook secret that is too short is refused before anything is sent", as
   await renderSignedIn(<Connections ws="ws" />, fn);
   const gh = within(await waitRow("github"));
   await user.type(gh.getByLabelText("Fine-grained personal access token"), TOKEN);
-  await user.type(gh.getByLabelText("Webhook secret (optional)"), "short");
+  await user.type(gh.getByLabelText("Webhook secret (for inbound events)"), "short");
   await user.click(gh.getByRole("button", { name: "Connect GitHub" }));
   expect((await gh.findByRole("alert")).textContent).toBe("A webhook secret is 16 to 128 characters with no spaces.");
   expect(bodies).toEqual([]);
@@ -191,7 +191,7 @@ test("a connected surface takes a new inbound secret alone and keeps its token",
   const gh = within(await waitRow("github"));
   const button = gh.getByRole("button", { name: "Replace the GitHub connection" }) as HTMLButtonElement;
   expect(button.disabled).toBe(true);
-  await user.type(gh.getByLabelText("Webhook secret (optional)"), SECRET);
+  await user.type(gh.getByLabelText("Webhook secret (for inbound events)"), SECRET);
   expect(button.disabled).toBe(false);
   await user.click(button);
   await waitFor(() => expect(bodies.length).toBe(1));

@@ -100,7 +100,7 @@ export const CONNECTIONS_NEED = "Only a workspace admin sees and sets this works
 
 /** Said above the rows. The token is checked once and then held where nobody can read it. */
 export const CONNECTIONS_HELP =
-  "Connect this workspace’s own GitHub, Slack and Linear accounts. A token is checked with its provider when you save it, then stored encrypted and never shown again. A workspace’s own connection is always the one it uses.";
+  "Connect this workspace’s own GitHub, Slack and Linear accounts. A token is checked with its provider when you save it, then stored encrypted and never shown again. A workspace’s own connection is always the one it uses. An inbound URL is where GitHub or Slack sends this workspace its events.";
 
 /** The date a connection was made, in the reader's own format. */
 export function connectedOn(iso: string, format: (d: Date) => string = (d) => d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })): string | null {

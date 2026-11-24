@@ -322,7 +322,7 @@ test("the Integrations tab holds the accounts, the webhooks and what they sent",
     { match: /\/workspaces\/ws\/deliveries/, body: () => [] },
   ]);
   await screen.findByRole("heading", { name: "GitHub, Slack and Linear" });
-  await screen.findByRole("heading", { name: "Webhooks" });
+  await screen.findByRole("heading", { name: "Outbound webhooks" });
   await screen.findByRole("heading", { name: "Webhook and automation sends" });
   // The sends moved here from Deliveries.
   window.location.hash = "#/tools/deliveries";
