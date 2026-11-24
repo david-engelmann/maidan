@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v478.0.0](https://github.com/david-engelmann/maidan/releases/tag/v478.0.0) — a federated mention no longer notifies a member of another workspace, and 3 more
+
+A workspace connects its own GitHub, Slack and Linear, receives its own inbound events and manages its outbound webhooks in the console. Live streams, share tickets, digests and run counts show a member only what it may read, and a federated mention notifies only members of its own workspace.
+
+- A federated mention no longer notifies a member of another workspace
+- Live streams show a member only what it may read, event by event
+- Share tickets, buried decisions and run occupancy keep to what the caller may read
+- A workspace connects its own GitHub, Slack and Linear
+
+`CHANGELOG.md` under `[478.0.0]` has every entry.
+
 ## [v477.0.0](https://github.com/david-engelmann/maidan/releases/tag/v477.0.0) — the server's GitHub, Slack and Linear credentials serve only the operator's workspaces
 
 The server's own GitHub, Slack and Linear credentials serve only the workspaces its operator opened. A workspace opened by sign-up or the demo's sandbox could bless any repository or channel, link a Slack channel or GitHub issue, and watch any pull request, and the server then read and wrote there with its own credentials. Upgrade any server that has sign-up on and holds one of those credentials.
