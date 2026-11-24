@@ -3,7 +3,8 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ArtifactKind, MemberKind, NewArtifact, NewChannel, NewMember, NewShareTicket, NewWorkspace,
+    ArtifactKind, ChannelMemberRole, MemberKind, NewArtifact, NewChannel, NewMember,
+    NewShareTicket, NewWorkspace,
 };
 
 async fn sqlite() -> SqliteStore {
@@ -68,6 +69,10 @@ async fn run_suite(store: &dyn Store) {
         })
         .await
         .expect("other channel");
+    store
+        .add_channel_member(channel.id, owner.id, ChannelMemberRole::Member)
+        .await
+        .expect("owner joins the private channel");
 
     let allowed_sha = "1".repeat(64);
     let same_workspace_unshared_sha = "2".repeat(64);
@@ -270,6 +275,10 @@ async fn a_ticket_is_valid_until_the_instant_it_expires(store: &dyn Store) {
         })
         .await
         .expect("channel");
+    store
+        .add_channel_member(channel.id, owner.id, ChannelMemberRole::Member)
+        .await
+        .expect("owner joins the private channel");
 
     let token_hash = "b".repeat(64);
     let before = Utc::now();
@@ -303,6 +312,121 @@ async fn a_ticket_is_valid_until_the_instant_it_expires(store: &dyn Store) {
             .await,
         Err(StoreError::NotFound)
     ));
+}
+
+/// A ticket reads every thread and message of its channel, so minting one for
+/// the shared DM channel, or for a private channel the creator is not in, is
+/// refused. A public channel, and a private one the creator belongs to, still
+/// work.
+async fn a_ticket_cannot_open_the_dm_channel_or_a_private_channel_its_creator_is_not_in(
+    store: &dyn Store,
+) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "tickets".into(),
+        })
+        .await
+        .expect("workspace");
+    let member = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Human,
+    };
+    let admin = store.create_member(member("admin")).await.expect("admin");
+    let insider = store
+        .create_member(member("insider"))
+        .await
+        .expect("insider");
+    let peer = store.create_member(member("peer")).await.expect("peer");
+    let channel = |name: &str, private: bool| NewChannel {
+        workspace_id: ws.id,
+        name: name.into(),
+        topic: None,
+        private,
+    };
+    let public = store
+        .create_channel(channel("public", false))
+        .await
+        .expect("public");
+    let private = store
+        .create_channel(channel("private", true))
+        .await
+        .expect("private");
+    store
+        .add_channel_member(private.id, insider.id, ChannelMemberRole::Member)
+        .await
+        .expect("insider joins");
+    // Opening a conversation is what creates the workspace's DM channel.
+    let dm = store
+        .open_dm_conversation(ws.id, insider.id, peer.id)
+        .await
+        .expect("dm");
+    let dm_channel = store
+        .get_thread(dm.thread_id)
+        .await
+        .expect("dm thread")
+        .channel_id;
+    assert_eq!(
+        store
+            .get_channel(dm_channel)
+            .await
+            .expect("dm channel")
+            .name,
+        maidan_types::DM_CHANNEL_NAME
+    );
+
+    let mint = |channel_id, created_by, hash: &str| NewShareTicket {
+        workspace_id: ws.id,
+        channel_id,
+        owner_id: created_by,
+        created_by,
+        token_hash: hash.repeat(64),
+        expires_at: Utc::now() + ChronoDuration::hours(1),
+        artifact_shas: Vec::new(),
+    };
+
+    for creator in [admin.id, insider.id, peer.id] {
+        let refused = store
+            .create_share_ticket(mint(dm_channel, creator, "1"))
+            .await;
+        assert!(
+            matches!(&refused, Err(StoreError::InvalidInput(m)) if m.contains("direct messages")),
+            "the DM channel is never shared: {refused:?}"
+        );
+    }
+    let outsider = store
+        .create_share_ticket(mint(private.id, admin.id, "2"))
+        .await;
+    assert!(
+        matches!(&outsider, Err(StoreError::InvalidInput(m)) if m.contains("private channel")),
+        "an admin outside a private channel cannot share it: {outsider:?}"
+    );
+    assert!(
+        store
+            .create_share_ticket(mint(private.id, insider.id, "3"))
+            .await
+            .is_ok(),
+        "a member of the private channel can share it"
+    );
+    assert!(
+        store
+            .create_share_ticket(mint(public.id, admin.id, "4"))
+            .await
+            .is_ok(),
+        "a public channel can be shared by anyone who may mint"
+    );
+    assert_eq!(
+        store.list_share_tickets(ws.id).await.expect("list").len(),
+        2,
+        "a refused ticket leaves no row"
+    );
+}
+
+#[tokio::test]
+async fn a_ticket_cannot_open_the_dm_channel_or_a_private_channel_its_creator_is_not_in_sqlite() {
+    a_ticket_cannot_open_the_dm_channel_or_a_private_channel_its_creator_is_not_in(&sqlite().await)
+        .await;
 }
 
 #[tokio::test]
@@ -348,4 +472,5 @@ async fn share_ticket_lifecycle_postgres() {
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
     a_ticket_is_valid_until_the_instant_it_expires(&store).await;
+    a_ticket_cannot_open_the_dm_channel_or_a_private_channel_its_creator_is_not_in(&store).await;
 }

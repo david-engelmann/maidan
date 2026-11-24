@@ -46,6 +46,17 @@ pub(crate) async fn create_on(
             "share ticket channel, owner, and creator must be live in the same workspace".into(),
         ));
     }
+    let (channel_name, private, creator_is_member): (String, bool, bool) = sqlx::query_as(
+        "SELECT c.name, c.private,
+                EXISTS(SELECT 1 FROM maidan_channel_members m
+                       WHERE m.channel_id = c.id AND m.member_id = $2)
+         FROM maidan_channels c WHERE c.id = $1",
+    )
+    .bind(new.channel_id.0)
+    .bind(new.created_by.0)
+    .fetch_one(&mut *tx)
+    .await?;
+    share_tickets::ensure_channel_shareable(&channel_name, private, creator_is_member)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_share_tickets
             (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at)

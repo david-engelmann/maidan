@@ -383,7 +383,10 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
         let occupancy = store.channel_occupancy(ch, agent).await.expect("occupancy");
         assert_eq!(occupancy.queued, ready, "{kind:?} queued");
         assert_eq!(occupancy.blocked, 1 - ready, "{kind:?} blocked");
-        let by_run = store.run_occupancy(ws, &run).await.expect("run occupancy");
+        let by_run = store
+            .run_occupancy(ws, agent, &run)
+            .await
+            .expect("run occupancy");
         assert_eq!(
             (by_run.queued, by_run.blocked),
             (occupancy.queued, occupancy.blocked),
@@ -391,7 +394,7 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
         );
         assert_eq!(
             store
-                .run_occupancy(other, &run)
+                .run_occupancy(other, agent, &run)
                 .await
                 .expect("foreign run occupancy")
                 .open,

@@ -5,8 +5,8 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    normalize_parent_run_id, run_id_from_payload, MemberKind, NewChannel, NewMember, NewThread,
-    NewWorkspace, PARENT_RUN_ID_MAX_BYTES,
+    normalize_parent_run_id, run_id_from_payload, ChannelMemberRole, MemberKind, NewChannel,
+    NewMember, NewThread, NewWorkspace, PARENT_RUN_ID_MAX_BYTES,
 };
 use serde_json::json;
 
@@ -146,7 +146,7 @@ async fn run_suite(store: &dyn Store) {
     );
 
     let occ0 = store
-        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .run_occupancy(ws, member, PRODUCER_RUN_ID)
         .await
         .expect("occ0");
     assert_eq!(occ0.parent_run_id, PRODUCER_RUN_ID);
@@ -166,7 +166,7 @@ async fn run_suite(store: &dyn Store) {
         .claim_lease_id
         .expect("a claim mints a lease");
     let occ_claimed = store
-        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .run_occupancy(ws, member, PRODUCER_RUN_ID)
         .await
         .expect("claimed");
     assert_eq!(occ_claimed.queued, 1);
@@ -178,7 +178,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("ack");
     let occ_working = store
-        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .run_occupancy(ws, member, PRODUCER_RUN_ID)
         .await
         .expect("working");
     assert_eq!(occ_working.queued, 1);
@@ -191,7 +191,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("F7 mute the nested thread");
     let occ_muted = store
-        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .run_occupancy(ws, member, PRODUCER_RUN_ID)
         .await
         .expect("muted");
     assert_eq!(
@@ -220,7 +220,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("block the parent");
     let occ_blocked = store
-        .run_occupancy(ws, PRODUCER_RUN_ID)
+        .run_occupancy(ws, member, PRODUCER_RUN_ID)
         .await
         .expect("blocked");
     assert_eq!(
@@ -255,7 +255,7 @@ async fn run_suite(store: &dyn Store) {
     store.clear_thread_block(parent.id).await.expect("unblock");
     assert_eq!(
         store
-            .run_occupancy(ws, PRODUCER_RUN_ID)
+            .run_occupancy(ws, member, PRODUCER_RUN_ID)
             .await
             .expect("cleared"),
         occ_working,
@@ -263,7 +263,7 @@ async fn run_suite(store: &dyn Store) {
     );
 
     let empty = store
-        .run_occupancy(ws, "no-such-run")
+        .run_occupancy(ws, member, "no-such-run")
         .await
         .expect("unknown run");
     assert_eq!(empty.open, 0);
@@ -317,6 +317,96 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!(rewritten.parent_run_id, "rewritten-by-producer");
 }
 
+/// A run's occupancy counts only the threads the caller can read: a thread in
+/// a private channel it is not in, or in a DM it is not part of, adds nothing,
+/// while a reader inside both still counts them.
+async fn run_occupancy_counts_only_threads_the_reader_can_read(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "visibility".into(),
+        })
+        .await
+        .expect("ws");
+    let mk = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Agent,
+    };
+    let insider = store.create_member(mk("insider")).await.expect("insider");
+    let outsider = store.create_member(mk("outsider")).await.expect("outsider");
+    let partner = store.create_member(mk("partner")).await.expect("partner");
+    let channel = |name: &str, private: bool| NewChannel {
+        workspace_id: ws.id,
+        name: name.into(),
+        topic: None,
+        private,
+    };
+    let public = store
+        .create_channel(channel("public", false))
+        .await
+        .expect("public");
+    let private = store
+        .create_channel(channel("private", true))
+        .await
+        .expect("private");
+    store
+        .add_channel_member(private.id, insider.id, ChannelMemberRole::Member)
+        .await
+        .expect("insider joins");
+    let thread_in = |channel_id| NewThread {
+        channel_id,
+        parent_thread_id: None,
+        title: Some("run work".into()),
+        description: None,
+        created_by: None,
+    };
+    let open = store
+        .create_thread(thread_in(public.id))
+        .await
+        .expect("open");
+    let hidden = store
+        .create_thread(thread_in(private.id))
+        .await
+        .expect("hidden");
+    let dm = store
+        .open_dm_conversation(ws.id, insider.id, partner.id)
+        .await
+        .expect("dm");
+    for thread in [open.id, hidden.id, dm.thread_id] {
+        store
+            .set_thread_lineage(thread, PRODUCER_RUN_ID)
+            .await
+            .expect("home the thread under the run");
+    }
+
+    let insider_view = store
+        .run_occupancy(ws.id, insider.id, PRODUCER_RUN_ID)
+        .await
+        .expect("insider");
+    assert_eq!(insider_view.open, 3, "public, private and its own DM");
+    let outsider_view = store
+        .run_occupancy(ws.id, outsider.id, PRODUCER_RUN_ID)
+        .await
+        .expect("outsider");
+    assert_eq!(
+        outsider_view.open, 1,
+        "only the public thread: {outsider_view:?}"
+    );
+    assert_eq!(
+        outsider_view.queued
+            + outsider_view.claimed
+            + outsider_view.working
+            + outsider_view.blocked,
+        outsider_view.open
+    );
+}
+
+#[tokio::test]
+async fn run_occupancy_counts_only_threads_the_reader_can_read_sqlite() {
+    run_occupancy_counts_only_threads_the_reader_can_read(&sqlite().await).await;
+}
+
 #[tokio::test]
 async fn run_lineage_homes_producer_run_id_and_attributes_nested_occupancy_sqlite() {
     let store = sqlite().await;
@@ -355,4 +445,5 @@ async fn run_lineage_homes_producer_run_id_and_attributes_nested_occupancy_postg
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    run_occupancy_counts_only_threads_the_reader_can_read(&store).await;
 }

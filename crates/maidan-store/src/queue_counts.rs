@@ -131,21 +131,31 @@ pub(crate) struct RunSql<'a> {
     pub workspace: &'a str,
     /// Placeholder bound to the normalized parent run id.
     pub parent_run_id: &'a str,
+    /// Placeholder bound to the reader's member id. Required, as in
+    /// [`QueueSql::reader`]: a count of a run's threads includes only those
+    /// the reader may read.
+    pub reader: &'a str,
+    /// Placeholder bound to [`maidan_types::DM_CHANNEL_NAME`].
+    pub dm_channel: &'a str,
     /// The rest, as [`ThreadSql`].
     pub thread: ThreadSql<'a>,
 }
 
 /// `SELECT` of the [`RunOccupancy`](maidan_types::RunOccupancy) counts of the
-/// non-terminal threads homed under one parent run: the same partition as
-/// [`occupancy_select`], so the two views of one thread cannot disagree. A
+/// non-terminal threads homed under one parent run that the reader may read:
+/// the same partition as [`occupancy_select`], so the two views of one thread
+/// cannot disagree. A
 /// thread that is not `open` (in review, say) is never handed out, so unheld
 /// it counts `blocked`.
 pub(crate) fn run_occupancy_select(sql: &RunSql<'_>) -> String {
     let RunSql {
         workspace,
         parent_run_id,
+        reader,
+        dm_channel,
         thread,
     } = sql;
+    let readable = claim_next::readable_by(reader, dm_channel);
     format!(
         "SELECT {}
          FROM maidan_threads cand
@@ -154,7 +164,8 @@ pub(crate) fn run_occupancy_select(sql: &RunSql<'_>) -> String {
          WHERE ch.workspace_id = {workspace}
            AND l.parent_run_id = {parent_run_id}
            AND cand.state NOT IN ('closed', 'archived')
-           AND cand.tombstoned_at IS NULL",
+           AND cand.tombstoned_at IS NULL
+           AND {readable}",
         occupancy_columns(thread)
     )
 }

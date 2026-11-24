@@ -99,6 +99,14 @@ async fn share_ticket_operator_lifecycle_is_scoped_and_secret_safe() {
         })
         .await
         .unwrap();
+    store
+        .add_channel_member(
+            channel.id,
+            owner.id,
+            maidan_types::ChannelMemberRole::Member,
+        )
+        .await
+        .unwrap();
     let sha = "a".repeat(64);
     store
         .upsert_artifact(NewArtifact {
