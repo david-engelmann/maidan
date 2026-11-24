@@ -6,30 +6,27 @@ a person's review and close, the two-tenant refusals, the meters, and both
 tenants erased. [Launch Gate](../Launch%20Gate.md) is the runbook, and says
 what each check means.
 
-**The command passed on `v473.0.0`. maidan.world has run `v478.0.0` since
-2026-11-24, which adds routes and no MCP tool, and the command has not been run on
-it. Its rehearsal on a local Postgres is in
-[`listings/validation/v478.md`](../../listings/validation/v478.md). The
-launch is not called here:** the legs the command leaves to a person, and the go or no-go
-rows of the runbook, are the maintainer's.
+**The command passed on `v478.0.0`, the release maidan.world runs. The launch
+is not called here:** the legs the command leaves to a person, and the go or
+no-go rows of the runbook, are the maintainer's.
 
 ## The run
 
 | | |
 |---|---|
 | Origin | `https://maidan.world` |
-| Release | `v473.0.0`, commit `77e31d8bf491f0db6e28fb64c09f364da4553781` (`/health`, checked by step 0) |
-| Run by | the maintainer, with `EXPECT_VERSION=v473.0.0 scripts/launch-gate.sh --env-file .env.cloud` |
-| When | 2026-11-22, 03:15 to 03:16 UTC |
+| Release | `v478.0.0`, commit `3d3b346758113b823f59d0dad23f0a49b77527f7` (`/health`, checked by step 0) |
+| Run by | the maintainer, with `EXPECT_VERSION=v478.0.0 scripts/launch-gate.sh --env-file .env.cloud` |
+| When | 2026-11-24, 02:58 to 02:59 UTC |
 | Result | **PASS: 75 passed, 0 failed, 0 skipped** |
 | Console checks | in headless Chromium, 1440 x 900 |
-| The runs before it | on `v472.0.0` at 16:39 UTC and `v471.0.0` at 13:46 UTC on 2026-11-21, and on `v468.0.0` twice on 2026-11-20: each PASS, 75 passed, 0 failed, 0 skipped |
-| Validation record | [`listings/validation/v473.md`](../../listings/validation/v473.md), with the same gate rehearsed on a local Postgres |
+| The runs before it | on `v473.0.0` at 03:15 UTC on 2026-11-22, on `v472.0.0` at 16:39 UTC and `v471.0.0` at 13:46 UTC on 2026-11-21, and on `v468.0.0` twice on 2026-11-20, each with 75 passed, 0 failed, 0 skipped |
+| Validation record | [`listings/validation/v478.md`](../../listings/validation/v478.md), with the same gate rehearsed on a local Postgres |
 
-`v473.0.0` is `v472.0.0` with what was made ready for the announcement (the
-docs and README, the demo's advice limit, a newer base image, test-only
-dependencies); no route, tool or schema differs between them. `v471.0.0` added
-advice at review from five decision-model providers to what `v468.0.0` was.
+`v478.0.0` is `v474.0.0` with a workspace that connects its own GitHub, Slack
+and Linear and receives its own inbound events, and with the cross-workspace
+reads of federation peers, the server's own credentials, live streams, share
+tickets, digests and federated mentions closed. It adds routes and no MCP tool.
 
 The first run against maidan.world, on `v467.0.0` on 2026-11-20, failed: 73
 passed, 3 failed. On Postgres a workspace that had done work could not be
@@ -43,14 +40,14 @@ nobody can sign in to (`v469.0.0`).
 The step numbers are the runbook's.
 
 ```
-PASS  0: /health is ok, on v473.0.0
-PASS  0: it is the release under test, v473.0.0
+PASS  0: /health is ok, on v478.0.0
+PASS  0: it is the release under test, v478.0.0
 PASS  0: /status answers
 PASS  0: the operator token holds operator:global
-PASS  1: the operator opens workspace a, launch-gate-a-202611220315 (01a20140-72c0-7618-abc9-08cb559bd466)
+PASS  1: the operator opens workspace a, launch-gate-a-202611240258 (01a20b7d-7432-7200-ad35-d128f8db4f1b)
 PASS  1: its first member is a person (kind human)
 PASS  1: its admin token administers it and nothing across tenants
-PASS  1: the operator opens workspace b, launch-gate-b-202611220315 (01a20140-74ae-759a-aa65-877faa265d64)
+PASS  1: the operator opens workspace b, launch-gate-b-202611240258 (01a20b7d-76dc-702e-9b23-f3e9c8803ce8)
 PASS  1: its first member is a person (kind human)
 PASS  1: its admin token administers it and nothing across tenants
 PASS  1: the two workspaces are distinct
@@ -107,16 +104,16 @@ PASS  6: More actions, Close task closes it
 PASS  6: the thread is closed
 PASS  8: B's session is refused /ui/api/threads/T (HTTP 403), with nothing of A in the answer
 PASS  8: B's session is refused /ui/api/threads/T/review-packet (HTTP 403), with nothing of A in the answer
-PASS  8: B's session is refused /ui/api/channels/01a20140-9139-703e-a58a-a2a86daa6d27/threads (HTTP 403), with nothing of A in the answer
+PASS  8: B's session is refused /ui/api/channels/01a20b7d-a268-7565-a468-3827215e6c89/threads (HTTP 403), with nothing of A in the answer
 PASS  8: B's admin token is refused A's thread (HTTP 403)
 PASS  8: B's admin token is refused A's members (HTTP 403)
 PASS  8: B's Board and People show B's own and nothing of workspace A
 PASS  7: A's mcp_calls is the 13 calls its agent made (it reads 13)
 PASS  7: A's requests is at least its mcp_calls (it reads 91)
 PASS  7: B's mcp_calls is the 3 calls its own agent made, none of A's (it reads 3)
-PASS  cleanup: workspace a (01a20140-72c0-7618-abc9-08cb559bd466) is erased
+PASS  cleanup: workspace a (01a20b7d-7432-7200-ad35-d128f8db4f1b) is erased
 PASS  cleanup: a's admin token is refused once its workspace is gone (HTTP 401)
-PASS  cleanup: workspace b (01a20140-74ae-759a-aa65-877faa265d64) is erased
+PASS  cleanup: workspace b (01a20b7d-76dc-702e-9b23-f3e9c8803ce8) is erased
 PASS  cleanup: b's admin token is refused once its workspace is gone (HTTP 401)
 ```
 
@@ -156,7 +153,7 @@ All the maintainer's:
 ## Re-running the gate
 
 ```sh
-EXPECT_VERSION=v473.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
+EXPECT_VERSION=v478.0.0 scripts/launch-gate.sh --env-file PATH_TO_YOUR_DOTENV
 ```
 
 A new release re-runs it. Before the command is handed to the maintainer it

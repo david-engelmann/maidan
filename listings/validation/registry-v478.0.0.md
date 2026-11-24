@@ -20,11 +20,7 @@ what was not done named under "Still open".
 
 ## Sent
 
-Not yet, when this record was written. The entry to be published is
-`listings/registry/server.json` at the release's commit: `io.github.david-engelmann/maidan`
-at 478.0.0, with the remote `https://maidan.world/mcp/streamable` and the
-package `ghcr.io/david-engelmann/maidan-server:v478.0.0`. The registry listed
-473.0.0 until then.
+Published on 2026-11-24 at 03:06 UTC by run 45317153498 of the `publish MCP registry` workflow, dispatched with `release=v478.0.0` after the gate passed on that release. The registry's public API lists `io.github.david-engelmann/maidan` at 478.0.0, with the remote `https://maidan.world/mcp/streamable` and the package `ghcr.io/david-engelmann/maidan-server:v478.0.0`. It listed 473.0.0 before. The Docker MCP Catalog entry (docker/mcp-registry#7499) is still open and awaits that repository's review. It is a remote entry for the hosted endpoint, which serves `v478.0.0`.
 
 ## Clean install
 
