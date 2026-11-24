@@ -225,7 +225,7 @@ function Group({ group, chosen, onKind, onGroup }: { group: EventGroup; chosen: 
       </summary>
       <label className="check webhook-all">
         <input ref={all} type="checkbox" checked={n === group.kinds.length} onChange={(e) => onGroup(e.target.checked)} />
-        {`All ${group.title.toLowerCase()} events`}
+        {`Every event in ${group.title}`}
       </label>
       <div className="webhook-event-list">
         {group.kinds.map((k) => (

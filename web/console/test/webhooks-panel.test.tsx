@@ -291,7 +291,7 @@ test("every kind the server has is offered in groups, and a whole group can be c
   screen.getByText("Choose at least one. 52 to choose from, in 10 groups.");
   const group = within(document.querySelector<HTMLElement>('[data-group="claims"]') as HTMLElement);
   group.getByText("4 events");
-  const all = group.getByRole("checkbox", { name: "All claims events" }) as HTMLInputElement;
+  const all = group.getByRole("checkbox", { name: "Every event in Claims" }) as HTMLInputElement;
   // One kind makes the group box partly on, and the group says so.
   await user.click(group.getByRole("checkbox", { name: "Claim expired" }));
   expect(all.indeterminate).toBe(true);
