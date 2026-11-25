@@ -57,7 +57,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_capability_sets`
 
-**List capability sets.** List the named capability sets and the atomic capabilities each expands to, as {sets: [{name, capabilities}]}. maidan.agent.worker holds workspace:read, workspace:write, member:self, message:post, event:subscribe, search:query, artifact:upload and thread:transition. maidan.human.admin adds token:admin, channel:admin, secret:read, secret:admin, audit:read-global, operator:global and workspace:admin. A set is a recipe applied when a token is minted; whoami reports which sets you fully hold and attenuate_token derives a weaker token. Takes no arguments. Requires workspace:read.
+**List capability sets.** List the named capability sets and the atomic capabilities each expands to, as {sets: a list of {name, capabilities}}. maidan.agent.worker holds workspace:read, workspace:write, member:self, message:post, event:subscribe, search:query, artifact:upload and thread:transition. maidan.human.admin adds token:admin, channel:admin, secret:read, secret:admin, audit:read-global, operator:global and workspace:admin. A set is a recipe applied when a token is minted; whoami reports which sets you fully hold and attenuate_token derives a weaker token. Takes no arguments. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3154,7 +3154,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_dependencies`
 
-**List thread dependencies.** List the threads a task depends on and whether the task is ready to run. Returns {dependencies: [{thread_id, depends_on_thread_id, created_at}], ready}; ready is true when every dependency is closed or archived, and also when there are none. A thread that is not ready is not handed out by claim_next. Add and remove edges with add_thread_dependency and remove_thread_dependency, and use list_thread_dependents for the reverse direction. Requires workspace:read.
+**List thread dependencies.** List the threads a task depends on and whether the task is ready to run. Returns {dependencies: a list of {thread_id, depends_on_thread_id, created_at}, ready}; ready is true when every dependency is closed or archived, and also when there are none. A thread that is not ready is not handed out by claim_next. Add and remove edges with add_thread_dependency and remove_thread_dependency, and use list_thread_dependents for the reverse direction. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5741,7 +5741,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_manager_digest`
 
-**Get manager digest.** Return a member's unread work-lifecycle notifications since an instant, rolled up per channel: {member_id, since, channels: [{channel_id, results, gates, stuck}], spend_usd_micros, cost_per_completed_task_usd_micros}. results counts task results set, gates counts approval requests, and stuck counts claims expired, unacknowledged, stalled or failed plus wait timeouts; a null channel_id is the bucket for notifications with no channel. The spend figures are lifetime workspace totals, not limited to since. It is a notification view, not analytics: use usage_rollup for spend and list_notifications for the items. member_id must be your own. Requires workspace:read.
+**Get manager digest.** Return a member's unread work-lifecycle notifications since an instant, rolled up per channel: {member_id, since, channels: a list of {channel_id, results, gates, stuck}, spend_usd_micros, cost_per_completed_task_usd_micros}. results counts task results set, gates counts approval requests, and stuck counts claims expired, unacknowledged, stalled or failed plus wait timeouts; a null channel_id is the bucket for notifications with no channel. The spend figures are lifetime workspace totals, not limited to since. It is a notification view, not analytics: use usage_rollup for spend and list_notifications for the items. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
