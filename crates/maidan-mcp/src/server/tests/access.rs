@@ -581,6 +581,28 @@ async fn mcp_denies_non_members_in_private_channels() {
             .all(|t| t["channel_id"] != json!(ch.id.0)),
         "bob's workspace context excludes the private channel's threads"
     );
+    assert!(
+        bob_ctx["channels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["id"] != json!(ch.id.0)),
+        "bob's workspace context does not name the private channel"
+    );
+    let alice_ctx = unwrap_content(
+        server
+            .call_tool(&alice_auth, "get_workspace_context", &ws_args)
+            .await
+            .unwrap(),
+    );
+    assert!(
+        alice_ctx["channels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["id"] == json!(ch.id.0)),
+        "alice's workspace context names the private channel she is in"
+    );
 }
 
 #[tokio::test]
