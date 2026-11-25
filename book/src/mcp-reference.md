@@ -408,7 +408,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   ],
   "properties": {
     "body": {
-      "description": "Plain-text message body, which is what search indexes. Omit it when sending typed content; it is then derived from the content blocks.",
+      "description": "Plain-text message body, which is what search indexes; omit when sending typed content, and it is then derived from the content blocks.",
       "type": "string"
     },
     "content": {
@@ -6396,7 +6396,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   ],
   "properties": {
     "body": {
-      "description": "Plain-text message text, which is what search indexes. Omit it or send an empty string when you pass content. At least one of body or content is required.",
+      "description": "Plain-text message text, which is what search indexes; omit when sending typed content, or send an empty string. At least one of body or content is required.",
       "type": "string"
     },
     "content": {

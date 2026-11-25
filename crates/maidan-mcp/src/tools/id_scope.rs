@@ -449,6 +449,11 @@ const ROWS: &[Row] = &[
         &["get_thread_context"],
     ),
     row(
+        "thread_cursor",
+        IdCheck::Exempt(PAGE_POSITION),
+        &["get_workspace_context"],
+    ),
+    row(
         "claim_lease_id",
         IdCheck::Exempt(FENCING_TOKEN),
         &[
