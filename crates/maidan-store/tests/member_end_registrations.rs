@@ -94,6 +94,7 @@ async fn ticket(
             channel_id: t.channel,
             owner_id: owner,
             created_by,
+            created_by_token: None,
             token_hash: hash_secret(secret),
             expires_at: Utc::now() + Duration::hours(1),
             artifact_shas: Vec::new(),

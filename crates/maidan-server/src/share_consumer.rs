@@ -13,14 +13,15 @@ use chrono::{DateTime, Utc};
 use maidan_artifacts::Sha256;
 use maidan_auth::hash_secret;
 use maidan_types::{
-    ArtifactKind, Channel, ContentBlock, MemberId, MessageId, ShareTicket, ShareTicketId, ThreadId,
-    ThreadState, WorkspaceId,
+    ArtifactKind, AuditScope, Channel, ContentBlock, MemberId, MessageId, NewAuditEvent,
+    ShareTicket, ShareTicketId, ThreadId, ThreadState, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ApiError;
 use crate::extract::{ApiPath, ApiQuery};
+use crate::registration_owner::NotActing;
 use crate::state::AppState;
 
 const SHARE_SECRET_PREFIX: &str = "maid_share_";
@@ -55,6 +56,86 @@ fn harden_share_response(mut response: Response) -> Response {
         HeaderValue::from_static("no-referrer"),
     );
     response
+}
+
+/// Whether the ticket's creator could still mint it, checked on every use: a
+/// ticket is the creator's authority lent to someone outside the workspace for
+/// up to 48 hours, and it must not outlive that authority (SEC-017, as for a
+/// webhook). The creator must still be a live, active member who can read the
+/// channel by the rule minting applies (a private channel needs a membership
+/// row), and, when the ticket was minted with an API token, that token must
+/// still resolve and hold `token:admin`. A ticket minted on a browser session
+/// or before the token was recorded has no token to resolve and is held to the
+/// member's standing alone.
+async fn creator_may_still_share(state: &AppState, ticket: &ShareTicket) -> Result<(), NotActing> {
+    if let Some(token_id) = ticket.created_by_token {
+        crate::registration_owner::creator_authority(
+            state,
+            Some(token_id),
+            ticket.workspace_id,
+            maidan_auth::capability::TOKEN_ADMIN,
+        )
+        .await?;
+    }
+    let store = state.store.as_ref();
+    let mut members = vec![ticket.created_by];
+    if ticket.owner_id != ticket.created_by {
+        members.push(ticket.owner_id);
+    }
+    for member in members {
+        match store.get_member(member).await {
+            Ok(found)
+                if found.tombstoned_at.is_none() && found.workspace_id == ticket.workspace_id => {}
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {
+                return Err(NotActing::Ended("creator removed"));
+            }
+            Err(_) => return Err(NotActing::Held("creator check failed")),
+        }
+        match store.get_scim_user(member).await {
+            Ok(Some(user)) if !user.active => return Err(NotActing::Ended("creator deactivated")),
+            Ok(_) => {}
+            Err(_) => return Err(NotActing::Held("creator check failed")),
+        }
+    }
+    match maidan_auth::member_can_access_channel(
+        store,
+        ticket.workspace_id,
+        ticket.created_by,
+        ticket.channel_id,
+    )
+    .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(NotActing::Ended("creator cannot read the channel")),
+        Err(_) => Err(NotActing::Held("creator check failed")),
+    }
+}
+
+/// Revoke a ticket whose creator's authority ended, so it stays dead if that
+/// authority were ever restored, with the reason in the audit trail. The
+/// holder is told nothing: the caller answers as it does for an unknown
+/// ticket.
+async fn retire_ticket(state: &AppState, ticket: &ShareTicket, reason: &'static str) {
+    let workspace_id = ticket.workspace_id;
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(workspace_id),
+        actor_id: None,
+        action: "share_ticket.revoke".into(),
+        target_kind: Some("share_ticket".into()),
+        target_id: Some(ticket.id.0),
+        metadata: serde_json::json!({
+            "workspace_id": workspace_id.0,
+            "member_id": ticket.created_by.0,
+            "reason": reason,
+        }),
+    };
+    if let Err(error) = state
+        .store
+        .revoke_share_ticket_audited(workspace_id, ticket.id, audit)
+        .await
+    {
+        tracing::error!(error = %error, reason, "share_ticket.retire_failed");
+    }
 }
 
 /// Resolve `Authorization: ShareTicket maid_share_…` without invoking the API
@@ -111,6 +192,18 @@ pub async fn middleware(
             tracing::error!(error = %error, "share_ticket.suspension_check_failed");
             return harden_share_response(ApiError::Unauthorized.into_response());
         }
+    }
+    // After the suspension check, which answers for the workspace: this one
+    // answers for the creator. Ended authority revokes the ticket; a check
+    // that could not finish refuses this use only.
+    if let Err(not_acting) = creator_may_still_share(&state, &ticket).await {
+        match not_acting {
+            NotActing::Ended(reason) => retire_ticket(&state, &ticket, reason).await,
+            NotActing::Held(reason) => {
+                tracing::warn!(ticket = %ticket.id.0, reason, "share ticket held");
+            }
+        }
+        return harden_share_response(ApiError::Unauthorized.into_response());
     }
     request.extensions_mut().insert(ShareTicketContext(ticket));
     let mut response = harden_share_response(next.run(request).await);

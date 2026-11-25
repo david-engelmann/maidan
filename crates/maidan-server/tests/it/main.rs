@@ -749,6 +749,9 @@ mod session_workspaces_e2e;
 #[path = "../share_ticket_consumer_e2e.rs"]
 mod share_ticket_consumer_e2e;
 
+#[path = "../share_ticket_creator_standing_e2e.rs"]
+mod share_ticket_creator_standing_e2e;
+
 #[path = "../share_ticket_rest_e2e.rs"]
 mod share_ticket_rest_e2e;
 
@@ -979,6 +982,9 @@ mod wait_sweeper_e2e;
 
 #[path = "../waiting_inbox_e2e.rs"]
 mod waiting_inbox_e2e;
+
+#[path = "../waiting_inbox_private_channel_e2e.rs"]
+mod waiting_inbox_private_channel_e2e;
 
 #[path = "../wasi_slash_e2e.rs"]
 mod wasi_slash_e2e;

@@ -6,7 +6,8 @@
 //! This is the one rule every reader of events applies: the backfill, the
 //! live streams (`/ws/subscribe`, `/mcp/stream`, `/agui/stream`) on replay and
 //! on live delivery, webhook delivery, and the per-event check a one-shot MCP
-//! waiter (`wait_for_event`) applies to what it is handed live. A stream's
+//! waiter (`wait_for_event`, `wait_for_mention`) applies to what it is handed,
+//! live or replayed. A stream's
 //! channel grants only narrow what it asks for and never lend access.
 //! Federation peers read the whole log.
 //!

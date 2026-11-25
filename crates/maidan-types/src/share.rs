@@ -5,7 +5,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{ChannelId, MemberId, ShareTicketId, WorkspaceId};
+use crate::{ApiTokenId, ChannelId, MemberId, ShareTicketId, WorkspaceId};
 
 /// Hard ceiling for a cross-organization share ticket: 48 hours.
 pub const SHARE_TICKET_MAX_TTL_SECS: i64 = 48 * 60 * 60;
@@ -21,6 +21,12 @@ pub struct ShareTicket {
     /// Internal member accountable for the external share.
     pub owner_id: MemberId,
     pub created_by: MemberId,
+    /// The API token the ticket was minted with, when it was minted with one.
+    /// Each use of the ticket resolves it again, so revoking it ends the
+    /// ticket. Server-side only: the holder is not told what stands behind it.
+    #[serde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
+    pub created_by_token: Option<ApiTokenId>,
     #[serde(skip)]
     #[cfg_attr(feature = "openapi", schema(ignore))]
     pub token_hash: String,
@@ -35,6 +41,9 @@ pub struct NewShareTicket {
     pub channel_id: ChannelId,
     pub owner_id: MemberId,
     pub created_by: MemberId,
+    /// The caller's API token, `None` for a browser session. See
+    /// [`ShareTicket::created_by_token`].
+    pub created_by_token: Option<ApiTokenId>,
     pub token_hash: String,
     pub expires_at: DateTime<Utc>,
     pub artifact_shas: Vec<String>,

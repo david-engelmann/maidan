@@ -91,6 +91,7 @@ mod tests {
             channel_id: ChannelId(Uuid::nil()),
             owner_id: MemberId(Uuid::nil()),
             created_by: MemberId(Uuid::nil()),
+            created_by_token: None,
             token_hash: "a".repeat(64),
             expires_at,
             artifact_shas: Vec::new(),
