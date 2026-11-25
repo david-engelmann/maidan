@@ -504,7 +504,8 @@ async fn the_advisor_is_off_by_default() {
         .json()
         .await
         .unwrap();
-    assert_eq!(status, json!({ "enabled": false }));
+    // Nothing is offered, so nothing can be stored either.
+    assert_eq!(status, json!({ "enabled": false, "can_store_key": false }));
     let set = client
         .put(world.url(&format!(
             "/workspaces/{}/land-gate/advisor",

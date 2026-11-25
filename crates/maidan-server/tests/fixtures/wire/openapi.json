@@ -1941,8 +1941,8 @@
           }
         },
         "required": [
-          "can_store",
-          "surface"
+          "surface",
+          "can_store"
         ],
         "type": "object"
       },
@@ -5225,8 +5225,8 @@
           }
         },
         "required": [
-          "can_store_key",
-          "enabled"
+          "enabled",
+          "can_store_key"
         ],
         "type": "object"
       },
