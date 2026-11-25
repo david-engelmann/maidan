@@ -1,4 +1,0 @@
-### The GitHub Copilot CLI plugin package
-
-- **Added:** A GitHub Copilot CLI plugin in the Agent Plugins 1.0 shape. A root `plugin.json`, the worker (`maidan-claimant`) and reviewer (`maidan-reviewer`) skills under `skills/`, and a marketplace at `.github/plugin/marketplace.json` make it installable with `copilot plugin marketplace add david-engelmann/maidan` and `copilot plugin install maidan@maidan-plugins`. The plugin is free and production is self-hosted. It carries no MCP server, because Agent Plugins 1.0 passes remote config literally. The server is added with `copilot mcp add`, pointing at `/mcp/streamable` (or `/mcp/worker` for a seat that runs only the core worker loop). A contract test keeps the manifest shape and holds the bundled skills byte for byte to the examples under `examples/claude-code/`. The validation record is `listings/validation/copilot-plugin.md`.
-- **Changed:** The worker runbook's harness table names Copilot CLI (`"harness": "copilot"`).
