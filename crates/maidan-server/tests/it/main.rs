@@ -980,6 +980,9 @@ mod wait_sweeper_e2e;
 #[path = "../waiting_inbox_e2e.rs"]
 mod waiting_inbox_e2e;
 
+#[path = "../waiting_inbox_private_channel_e2e.rs"]
+mod waiting_inbox_private_channel_e2e;
+
 #[path = "../wasi_slash_e2e.rs"]
 mod wasi_slash_e2e;
 

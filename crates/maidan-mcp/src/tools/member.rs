@@ -1372,61 +1372,98 @@ mod tests {
             .is_none());
     }
 
-    /// A notification row for a channel-only event follows the channel's
-    /// membership as one for a thread follows the thread's.
-    #[tokio::test]
-    async fn a_notification_for_a_private_channel_the_member_is_not_in_is_not_waited_on() {
-        let rig = rig().await;
-        let store = rig.server.store.as_ref();
+    /// The store already hides a notification from the member it belongs to
+    /// once they leave the channel (it filters by the same rule on every
+    /// read), so a row it returns is always readable by its recipient. These
+    /// two tests therefore read the row of a member who IS in the channel
+    /// with the `auth` of one who is not: the store's filter lets the row
+    /// through, and only the caller-side check in `next_unread_notification`
+    /// and `notification_line` can still refuse it.
+    async fn insiders_channel_only_row(rig: &Rig) -> NewNotification {
         let source = rig
             .server
             .publish_event(rig.channel_only(rig.insider, rig.private))
             .await
             .unwrap();
-        let row = |member, channel_id| NewNotification {
+        NewNotification {
             workspace_id: rig.workspace,
-            member_id: member,
+            member_id: rig.insider,
             kind: EventKind::ApprovalRequested,
             source_log_id: source,
-            channel_id: Some(channel_id),
+            channel_id: Some(rig.private),
             thread_id: None,
             message_id: None,
             actor_id: None,
-        };
+        }
+    }
+
+    fn session(rig: &Rig, member: MemberId) -> AuthContext {
+        AuthContext::from_session(member, rig.workspace, vec![WORKSPACE_READ.into()])
+    }
+
+    #[tokio::test]
+    async fn a_channel_only_notification_is_not_waited_on_by_a_caller_outside_its_channel() {
+        let rig = rig().await;
+        let store = rig.server.store.as_ref();
         store
-            .create_notification(row(rig.outsider, rig.private))
+            .create_notification(insiders_channel_only_row(&rig).await)
             .await
             .unwrap();
-        store
-            .create_notification(row(rig.insider, rig.private))
-            .await
-            .unwrap();
-        let auth_of =
-            |member| AuthContext::from_session(member, rig.workspace, vec![WORKSPACE_READ.into()]);
+        // Without the channel check the first call returns the row: the store
+        // filter passes it (it is the insider's own) and there is no thread
+        // for the old thread check to refuse.
         assert!(
-            next_unread_notification(store, &auth_of(rig.outsider), rig.outsider, 0)
+            next_unread_notification(store, &session(&rig, rig.outsider), rig.insider, 0)
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(
-            next_unread_notification(store, &auth_of(rig.insider), rig.insider, 0)
+            next_unread_notification(store, &session(&rig, rig.insider), rig.insider, 0)
                 .await
                 .unwrap()
                 .is_some()
         );
-        let outsider_rows = list_notifications(
+    }
+
+    #[tokio::test]
+    async fn a_channel_only_notification_row_carries_its_reason_only_for_a_caller_in_the_channel() {
+        let rig = rig().await;
+        store_row(&rig).await;
+        // The reason is withheld from a caller who cannot read the channel. A
+        // row on no thread has no title of its own, so the reason is the
+        // digest that could leak. Without the channel branch in
+        // `notification_line`, the outsider's call reads the stored event and
+        // returns "approval requested".
+        let outside = digest(&rig, session(&rig, rig.outsider)).await;
+        assert!(
+            outside.get("reason").is_none() && outside.get("title").is_none(),
+            "{outside}"
+        );
+        let inside = digest(&rig, session(&rig, rig.insider)).await;
+        assert_eq!(inside["reason"], json!("approval requested"), "{inside}");
+    }
+
+    /// The insider's notifications as `auth` lists them: the one row.
+    async fn digest(rig: &Rig, auth: AuthContext) -> Value {
+        let listed = list_notifications(
             &rig.server.store,
-            &auth_of(rig.outsider),
-            &json!({ "member_id": rig.outsider.0 }),
+            &auth,
+            &json!({ "member_id": rig.insider.0 }),
         )
         .await
         .unwrap();
-        let listed: Value =
-            serde_json::from_str(outsider_rows["content"][0]["text"].as_str().unwrap()).unwrap();
-        assert!(
-            listed[0].get("reason").is_none() && listed[0].get("title").is_none(),
-            "a channel-only row the member cannot read carries no digest: {listed}"
-        );
+        let rows: Value =
+            serde_json::from_str(listed["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), 1, "{rows}");
+        rows[0].clone()
+    }
+
+    async fn store_row(rig: &Rig) {
+        rig.server
+            .store
+            .create_notification(insiders_channel_only_row(rig).await)
+            .await
+            .unwrap();
     }
 }
