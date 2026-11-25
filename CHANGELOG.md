@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [480.0.0] — 2026-11-25
+
+MCP tool definitions say when to use each tool and describe every parameter, the workspace context names only channels the reader may see, a stdio session reports its release, and the Glama build file ships.
+
+### The README links to the Glama listing
+
+- **Added:** the README's badge row carries the Glama score badge, which links to the server's listing at `glama.ai/mcp/servers/david-engelmann/maidan`. The listing is claimed by the maintainer.
+
+### A stdio session reports the release it runs
+
+- **Fixed:** `maidan mcp-stdio` answered `initialize` with `serverInfo.version` `0.0.0`. It now reports the release version, the same value `maidan --version` and the HTTP endpoints give.
+
+### Tool definitions say when to use them and describe every parameter
+
+- **Changed:** 52 MCP tool descriptions were rewritten from their handlers. Each says what the tool does and how it differs from its nearest sibling, when to use a named alternative, what it requires, returns and changes, and gives every parameter a description. Several now state behavior the old text left out: `unassign_thread` works on any holder's claim and charges the time worked, `list_messages` returns only the oldest page, the member-scoped reads refuse another member's id, and `register_fsm_hook` needs `workspace:admin`.
+- **Fixed:** `get_workspace_context` declares its `thread_cursor` parameter, so an agent can page past the first threads.
+- **Added:** `listings/glama/Dockerfile`, the image Glama builds to list the tools: the newest signed release, served over stdio on a local database.
+
+### The workspace context names only channels the reader may see
+
+- **Security:** `get_workspace_context` and `GET /workspaces/{id}/context` listed every channel in the workspace, private ones included, to any member with `workspace:read`. They now apply the rule `list_channels` uses: a private channel is listed only to its members. Threads were already filtered, so no message content was exposed, only private channel names and topics.
+
 ## [479.0.0] — 2026-11-25
 
 The advice summary says when a reading is unclear, a server that cannot store secrets says so before the form, member-event waits, the waiting inbox and share tickets follow current access, and the Copilot CLI plugin package and the HOL Guard contribution ship.
