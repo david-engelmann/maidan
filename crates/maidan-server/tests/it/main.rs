@@ -674,6 +674,9 @@ mod result_kind_rest_e2e;
 #[path = "../retry_budget_e2e.rs"]
 mod retry_budget_e2e;
 
+#[path = "../review_accounts_e2e.rs"]
+mod review_accounts_e2e;
+
 #[path = "../review_rest_e2e.rs"]
 mod review_rest_e2e;
 

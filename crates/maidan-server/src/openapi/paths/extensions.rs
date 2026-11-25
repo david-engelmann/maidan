@@ -10,6 +10,7 @@
 use crate::error::ProblemDetails;
 use crate::openapi::responses::*;
 use crate::reindex_ops::StartReindexEmbeddings;
+use crate::review_account::{MintReviewAccount, MintedReviewAccount};
 use maidan_types::ReindexJob;
 use uuid::Uuid;
 
@@ -390,6 +391,20 @@ pub fn grant_workspace_credits() {}
         (status = 403, response = Forbidden),
     ))]
 pub fn provision_workspace() {}
+
+/// Open a review account for one provider
+///
+/// Makes a workspace of sample work for the reviewer of one directory or health check: a `#general` channel with the starter task, an admin, and two agents, with three tokens shown once that expire after `ttl_days`. The workspace never uses the instance's own GitHub, Slack or Linear credentials. Answers 503 when `MAIDAN_PUBLIC_ORIGIN` is not set, because the URLs it returns are built on it.
+#[utoipa::path(post, path = "/operator/review-accounts", tag = "operator",
+    request_body = MintReviewAccount,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, description = "The workspace, its three tokens (shown once) and the URLs to connect with", body = MintedReviewAccount),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn mint_review_account() {}
 
 /// The suspension in force on a workspace
 #[utoipa::path(get, path = "/operator/workspaces/{id}/suspension", tag = "operator",

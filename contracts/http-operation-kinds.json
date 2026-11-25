@@ -160,6 +160,7 @@
   {"method":"POST","path":"/operator/mail/dead/{id}/requeue","kind":"changes"},
   {"method":"POST","path":"/operator/reindex-embeddings","kind":"changes"},
   {"method":"GET","path":"/operator/reindex-embeddings/{job_id}","kind":"reads"},
+  {"method":"POST","path":"/operator/review-accounts","kind":"changes"},
   {"method":"GET","path":"/operator/status","kind":"reads"},
   {"method":"GET","path":"/operator/usage-meters","kind":"reads"},
   {"method":"GET","path":"/operator/waitlist","kind":"reads"},

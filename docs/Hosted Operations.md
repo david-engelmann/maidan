@@ -117,6 +117,58 @@ retries itself) and an API client a `503` `overloaded` problem with
 server sends to a browser page (an expired invite, a sign-in for the wrong
 address) is shown as a page with its title, its detail and a support link.
 
+### Review accounts
+
+Directories and catalogs that list Maidan check or review the hosted service,
+and their health checks and reviewers cannot answer a sign-up's emailed
+one-time code. Each of them gets a review account instead: a workspace that
+is nobody's real one, holds only sample work and can be revoked.
+
+With an operator token (`operator:global`) in the shell, one call makes the
+account for one provider. The token comes from the environment and is never
+typed into the command or printed:
+
+```sh
+curl -sS -X POST "$MAIDAN_URL/operator/review-accounts" \
+  -H "Authorization: Bearer $MAIDAN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"provider":"glama","ttl_days":90}'
+```
+
+`provider` is 1 to 32 characters of `a-z`, `0-9` and `-`. `ttl_days` is 1 to 90
+and defaults to 90.
+
+The answer is `201` with the same shape as a demo sandbox plus `provider`: the
+workspace, its `#general` channel and its "Say hello" task, the `mcp_url`
+(`{origin}/mcp/streamable`) and `console_url` (`{origin}/ui/`) built on
+`MAIDAN_PUBLIC_ORIGIN`, and three tokens shown once: an admin for the console
+(`review <provider> admin`), an agent (`review <provider> agent`) and a second
+agent that reviews the first one's work (`review <provider> reviewer`). All
+three expire at `expires_at`. Without a public origin the call answers `503`
+and names the variable.
+
+What the account is:
+
+- A workspace named `Review: <provider>` of origin `open`. The free allowance
+  applies to it, and the instance's own GitHub, Slack and Linear credentials
+  never serve it: its admin can connect an account of their own and nothing
+  more.
+- Separate from every other tenant, so its tokens see nothing of anyone
+  else's work, and from the demo: it needs neither `MAIDAN_DEMO_SANDBOX` nor
+  the demo instance marker, and it does not count against the sandbox limit.
+- Recorded in its own audit log: each token mint with the source
+  `review-account`, and a `review_account.create` row naming the operator, the
+  provider and the expiry.
+
+Each provider gets its own account, so ending one reaches no other. To revoke
+one before it lapses:
+
+- Suspend it, which stops it at once and can be lifted:
+  `PUT /operator/workspaces/{id}/suspension` with `{"reason": "…"}`, and
+  `DELETE` on the same path to lift it.
+- Or erase it for good: `DELETE /operator/workspaces/{id}` with
+  `{"confirm_workspace_id": "{id}", "reason": "…"}`. This removes the
+  workspace and every token in it.
+
 ### Restarting the container
 
 A running Container keeps the environment it started with, so a deploy that changes settings without changing the image doesn't reach it until it restarts. The Worker starts the container with a hash of its settings in `MAIDAN_ENV_FINGERPRINT`, and the server echoes it on every response (`x-maidan-env-fingerprint`). When a response carries another hash, as after an image rollout that restarted the container on the previous settings (v445), the Worker recycles the container on the next request. A restart by hand is still there for anything else. Set `MAIDAN_OPS_RESTART_TOKEN` (a Worker secret, never passed to the server) and `POST /__ops/restart` with `Authorization: Bearer <token>`. The Worker stops the container and answers `202`, and the next request starts a fresh one with the current settings.
