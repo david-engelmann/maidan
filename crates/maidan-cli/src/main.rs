@@ -552,8 +552,11 @@ async fn run_mcp_stdio(
             Arc::new(std::sync::atomic::AtomicI64::new(0)),
             processed_log_id.clone(),
         );
-    let server =
-        McpServer::new(store.clone(), artifacts, search, embedding_provider).with_event_bus(bus);
+    // Without this a stdio session's `serverInfo` reports the workspace
+    // package version (0.0.0), not the release the binary was built as.
+    let server = McpServer::new(store.clone(), artifacts, search, embedding_provider)
+        .with_event_bus(bus)
+        .with_server_version(version());
     let joined = tokio::task::spawn_blocking(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
