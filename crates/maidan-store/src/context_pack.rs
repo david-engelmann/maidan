@@ -391,7 +391,19 @@ pub async fn build_workspace_context(
     reader_id: MemberId,
 ) -> Result<WorkspaceContext, StoreError> {
     let workspace = store.get_workspace(workspace_id).await?;
-    let mut channels = store.list_channels(workspace_id).await?;
+    // The same rule as `maidan_auth::visible_channels`: a private channel is
+    // listed only to its members. The thread page below was filtered while
+    // the channel list was not, so any reader learned every private
+    // channel's name and topic.
+    let mut channels: Vec<Channel> = store
+        .list_channels_with_membership(workspace_id, reader_id)
+        .await?
+        .into_iter()
+        .filter(|(channel, is_member)| {
+            !channel.private || channel.name == DM_CHANNEL_NAME || *is_member
+        })
+        .map(|(channel, _)| channel)
+        .collect();
     channels.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.0.cmp(&b.id.0)));
     let glossary = if limits.include_glossary {
         sorted_glossary(store, workspace_id).await?

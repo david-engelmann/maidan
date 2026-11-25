@@ -389,3 +389,29 @@ they are the maintainer's and are not in this repository.
 
 **Logo.** `docs/assets/listing/maidan-icon-400.png`, by relative path, as the
 reference prefers.
+
+## Glama
+
+Glama lists Maidan twice. The server listing
+(`glama.ai/mcp/servers/david-engelmann/maidan`) is built from this repository
+and run in Glama's sandbox. The connector listing
+(`glama.ai/mcp/connectors/io.github.david-engelmann/maidan`) is the hosted
+endpoint, read from the official MCP registry. `glama.json` at the root names
+the maintainer.
+
+**The server build.** `listings/glama/Dockerfile` is what the server listing's
+build settings hold. It installs the newest signed release binary, checks it
+against that release's `SHA256SUMS`, and serves MCP over stdio on a fresh
+local SQLite database with a workspace made at start. It needs no key, token
+or network service, so Glama can list the tools with nothing configured. A
+change to it is pasted into the listing's build settings by hand.
+
+**The connector's health checks** sign in with a test profile: a separate
+maidan.world account whose only workspace is empty. The check starts a
+session and lists tools and never calls one.
+
+**Tool definitions.** Glama scores every tool definition with its open rubric
+(the Tool Definition Quality Score). The catalog's descriptions say what each
+tool does, when to use a named sibling instead, what it requires, returns and
+changes, and describe every parameter, which is also what an agent choosing a
+tool needs.
