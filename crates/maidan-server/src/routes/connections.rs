@@ -198,6 +198,7 @@ async fn row(
     workspace_id: WorkspaceId,
     surface: ConnectionSurface,
 ) -> ApiResult<Connection> {
+    let can_store = state.federation.encryption_key.is_some();
     let inbound = |secret_set| {
         (surface != ConnectionSurface::Linear).then(|| ConnectionInbound {
             url: inbound_url(state, workspace_id, surface),
@@ -207,6 +208,7 @@ async fn row(
     match state.stored_connection(workspace_id, surface).await {
         Ok(Some((_, stored))) => Ok(Connection {
             surface,
+            can_store,
             source: Some(ConnectionSource::Workspace),
             account: Some(stored.account.clone()),
             connected_at: Some(stored.connected_at),
@@ -219,6 +221,7 @@ async fn row(
                 .map_err(connection_error)?;
             Ok(Connection {
                 surface,
+                can_store,
                 source: source.map(|source| match source {
                     Source::Workspace => ConnectionSource::Workspace,
                     Source::Instance => ConnectionSource::Instance,
@@ -232,6 +235,7 @@ async fn row(
         // replaced or removed, and the listing does not fail for it.
         Err(ConnectionError::Unreadable { .. }) => Ok(Connection {
             surface,
+            can_store,
             source: Some(ConnectionSource::Workspace),
             account: None,
             connected_at: None,

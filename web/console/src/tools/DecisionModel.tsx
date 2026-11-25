@@ -2,7 +2,7 @@
 // provider has its own key, typed here once, checked by that provider, stored
 // encrypted, and never read back: the panel only ever knows whether one is set.
 import { type FormEvent, useMemo, useState } from "react";
-import { AdviceApi, KEY_NAME, needsAccount, type AdvisorProvider, type AdvisorStatus } from "../core/advice.ts";
+import { AdviceApi, KEY_CANNOT_STORE, KEY_NAME, needsAccount, type AdvisorProvider, type AdvisorStatus } from "../core/advice.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad } from "../hooks/useTools.ts";
@@ -48,6 +48,8 @@ export function DecisionModel({ ws }: { ws: string }) {
   if (!status.value.enabled) return null;
   const providers = providersOf(status.value);
   const on = providers.some((p) => p.key_source);
+  // Said once, up front, in place of every form: the server would refuse a key.
+  const cannot = status.value.can_store_key === false;
 
   return (
     <section className="card tool-panel">
@@ -59,23 +61,23 @@ export function DecisionModel({ ws }: { ws: string }) {
         A decision model reads a task’s hand-off and answers ten yes/no questions about it. The answers show on the task as advice for whoever reviews it.
         {providers.length > 1 ? " Add a key for any of these; with more than one, a reviewer can switch between them on the task." : ""}
       </p>
-      <p className="small">Only this workspace’s admin can set or remove a key.</p>
+      {cannot ? <p className="small" role="status">{KEY_CANNOT_STORE}</p> : <p className="small">Only this workspace’s admin can set or remove a key.</p>}
       {status.error ? <p className="small" role="alert">This may be out of date. The last read failed: {status.error} {retry}</p> : null}
       <ul className="muted small advisor-facts">
         <li><b>When.</b> Advice is asked for when someone opens a task that is in review, or an agent asks for it. Until then nothing is sent.</li>
         <li><b>What is sent.</b> To the provider asked, and no other: the task’s title, description and acceptance, its result, and the messages of the agent that did the work. What the provider keeps is under its own terms.</li>
-        <li><b>The key.</b> Saving sends it to its provider once, to check that it works. It is then stored encrypted here and never shown again.</li>
+        {cannot ? null : <li><b>The key.</b> Saving sends it to its provider once, to check that it works. It is then stored encrypted here and never shown again.</li>}
       </ul>
       <ul className="advisor-providers">
         {providers.map((p) => (
-          <Provider key={p.id} ws={ws} api={api} provider={p} reload={() => status.reload()} />
+          <Provider key={p.id} ws={ws} api={api} provider={p} canStore={!cannot} reload={() => status.reload()} />
         ))}
       </ul>
     </section>
   );
 }
 
-function Provider({ ws, api, provider, reload }: { ws: string; api: AdviceApi; provider: AdvisorProvider; reload: () => Promise<unknown> }) {
+function Provider({ ws, api, provider, canStore, reload }: { ws: string; api: AdviceApi; provider: AdvisorProvider; canStore: boolean; reload: () => Promise<unknown> }) {
   const [key, setKey] = useState("");
   // Cloudflare's key comes with the account it is for.
   const withAccount = needsAccount(provider.id);
@@ -106,7 +108,7 @@ function Provider({ ws, api, provider, reload }: { ws: string; api: AdviceApi; p
       </h3>
       <p className="small">{providerLine(provider)}</p>
       <p className="muted small">Sent to {provider.host}{provider.model ? `, model ${provider.model}` : ""}.</p>
-      <form
+      {canStore ? <form
         className="row-form"
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
@@ -124,7 +126,7 @@ function Provider({ ws, api, provider, reload }: { ws: string; api: AdviceApi; p
           <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder="Paste the key" />
         </label>
         <button className="button steel" disabled={busy !== null || !key.trim() || (withAccount && !account.trim())} aria-label={`Save the ${KEY_NAME[provider.id]}`}>{busy === "set" ? "Checking…" : "Save"}</button>
-      </form>
+      </form> : null}
       {own ? (
         confirming ? (
           <p className="small">

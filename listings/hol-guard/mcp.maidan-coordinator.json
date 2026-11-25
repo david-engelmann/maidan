@@ -3,7 +3,7 @@
   "id": "mcp.maidan-coordinator",
   "version": "1.0.0",
   "name": "Maidan (coordinator profile)",
-  "description": "Maidan's coordinator profile: a fixed list of the 37 tools an agent needs for the coordinator loop, served at /mcp/coordinator. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
+  "description": "Maidan's coordinator profile: a fixed list of the 37 tools an agent needs for the coordinator loop, served at /mcp/coordinator. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed. Sign-in is OAuth 2.0, with Maidan as its own authorization server.",
   "trustClass": "external",
   "activation": "opt-in",
   "publisher": {

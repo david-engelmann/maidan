@@ -439,7 +439,9 @@ curl -sS -X PUT "$URL/linear" -H "$H1" -H "$H2" -d '{"token":"lin_api_REPLACE_ME
 
 `GET "$URL"` lists the three surfaces in the order GitHub, Slack, Linear. Each
 row has `source` (`workspace`, `instance` or `null`), `account`,
-`connected_at` and, for GitHub and Slack, `inbound`. `DELETE "$URL/<surface>"`
+`connected_at`, `can_store` and, for GitHub and Slack, `inbound`. `can_store` is
+`false` on an instance without `FEDERATION_ENCRYPTION_KEY`, so the console says
+so before anyone fills in a form. `DELETE "$URL/<surface>"`
 removes the workspace's own connection and answers `204` whether or not there
 was one. An unknown surface is a `404`.
 

@@ -84,6 +84,11 @@ struct Harness {
 }
 
 async fn harness() -> Harness {
+    harness_with(Some(Arc::new([9u8; 32]))).await
+}
+
+/// A harness whose server holds `encryption_key`, or none.
+async fn harness_with(encryption_key: Option<Arc<[u8; 32]>>) -> Harness {
     let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -101,7 +106,7 @@ async fn harness() -> Harness {
         search,
     );
     std::mem::forget(dir);
-    state.federation = FederationRuntime::new(true, Some(Arc::new([9u8; 32])));
+    state.federation = FederationRuntime::new(true, encryption_key);
     let instance = Arc::new(MockGithub::default());
     state.attach_github_sender(instance.clone());
     let connections = Arc::new(MockConnections::default());
@@ -263,6 +268,50 @@ impl Harness {
 }
 
 const GITHUB_FIRST: &str = "connect GitHub for this workspace first (Tools, Integrations)";
+
+#[tokio::test]
+async fn the_list_says_whether_this_server_can_store_a_connection() {
+    let with_key = harness().await;
+    let ada = with_key.signed_up("ada").await;
+    let path = format!("/workspaces/{}/connections", ada.workspace.0);
+    let (status, listed) = with_key.send(reqwest::Method::GET, &ada, &path, None).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    assert!(
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row["can_store"] == json!(true)),
+        "{listed}"
+    );
+
+    // Without FEDERATION_ENCRYPTION_KEY the list says so up front, and a
+    // write is still the 503 an API caller has always had.
+    let without_key = harness_with(None).await;
+    let bob = without_key.signed_up("bob").await;
+    let path = format!("/workspaces/{}/connections", bob.workspace.0);
+    let (status, listed) = without_key
+        .send(reqwest::Method::GET, &bob, &path, None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    let rows = listed.as_array().unwrap();
+    assert_eq!(rows.len(), 3, "{listed}");
+    assert!(
+        rows.iter().all(|row| row["can_store"] == json!(false)),
+        "{listed}"
+    );
+    let (status, text) = without_key
+        .send(
+            reqwest::Method::PUT,
+            &bob,
+            &format!("{path}/linear"),
+            Some(json!({ "token": "lin_api_fixture" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{text}");
+}
 
 #[tokio::test]
 async fn a_signed_up_workspace_with_its_own_github_blesses_links_watches_and_delivers_through_its_own_client(

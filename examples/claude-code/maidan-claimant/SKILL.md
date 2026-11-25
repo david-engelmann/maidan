@@ -43,7 +43,8 @@ In short:
    runbook's fallback: push your own branch, open the draft yourself, and
    register it with `register_thread_pull`.
 6. **Close out.** `report_usage` with
-   `evidence: {"provider": "anthropic", "harness": "claude-code"}`, then
+   `evidence: {"provider": "<the model's vendor>", "harness": "<your harness>"}`
+   (the runbook's table lists the values), then
    `transition_thread` `start_review` and `release_claim`. Always release,
    even after a failure. A review of a change your own model family wrote
    (its `author_family`) is not yours: release it at once with
