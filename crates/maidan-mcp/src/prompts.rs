@@ -1,4 +1,5 @@
-//! MCP prompts for thread lifecycle workflows.
+//! MCP prompts: the thread lifecycle workflow, and one role playbook per
+//! skill ([`crate::playbooks`]).
 
 use std::sync::Arc;
 
@@ -9,6 +10,8 @@ use serde_json::{json, Value};
 
 use crate::error::McpError;
 
+/// The prompts that take arguments, which the generated MCP reference
+/// documents. `prompts/list` adds the role playbooks to these ([`listed`]).
 pub fn catalog() -> Vec<Value> {
     vec![json!({
         "name": "thread_workflow",
@@ -21,6 +24,14 @@ pub fn catalog() -> Vec<Value> {
     })]
 }
 
+/// What `prompts/list` returns: [`catalog`], then one `playbook_<role>` prompt
+/// per role playbook. The same for every caller.
+pub fn listed() -> Vec<Value> {
+    let mut prompts = catalog();
+    prompts.extend(crate::playbooks::prompts());
+    prompts
+}
+
 #[derive(Debug, Deserialize)]
 struct ThreadWorkflowArgs {
     thread_id: uuid::Uuid,
@@ -29,7 +40,8 @@ struct ThreadWorkflowArgs {
 pub async fn get(store: &Arc<dyn Store>, name: &str, args: &Value) -> Result<Value, McpError> {
     match name {
         "thread_workflow" => thread_workflow(store, args).await,
-        other => Err(McpError::MethodNotFound(format!("prompt:{other}"))),
+        other => crate::playbooks::prompt(other)
+            .ok_or_else(|| McpError::MethodNotFound(format!("prompt:{other}"))),
     }
 }
 

@@ -23,6 +23,8 @@ mod events;
 #[cfg(test)]
 mod members;
 #[cfg(test)]
+mod playbooks;
+#[cfg(test)]
 mod protocol;
 #[cfg(test)]
 mod resources;

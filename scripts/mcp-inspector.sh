@@ -280,6 +280,15 @@ for endpoint in /mcp/streamable /mcp; do
   prompts="$(run "$endpoint" --method prompts/list)" || fail "prompts/list: ${prompts}"
   jq -e '.prompts | length > 0' <<<"$prompts" >/dev/null || fail "prompts/list: ${prompts}"
   pass "prompts/list: $(jq '.prompts | length' <<<"$prompts") prompts"
+
+  jq -e '.prompts | any(.name | startswith("playbook_"))' <<<"$prompts" >/dev/null ||
+    fail "prompts/list names no playbook_<role> prompt: ${prompts}"
+  playbook_uri="$(jq -r '[.resources[].uri | select(startswith("maidan://playbooks/"))][0] // empty' <<<"$resources")"
+  [[ -n "$playbook_uri" ]] || fail "resources/list lists no maidan://playbooks/<role> resource: ${resources}"
+  playbook="$(run "$endpoint" --method resources/read --uri "$playbook_uri")" || fail "resources/read ${playbook_uri}: ${playbook}"
+  jq -e '.contents[0].mimeType == "text/markdown" and (.contents[0].text | length > 0)' <<<"$playbook" >/dev/null ||
+    fail "resources/read ${playbook_uri} is not a markdown playbook: ${playbook}"
+  pass "playbooks: ${playbook_uri} reads as markdown"
 done
 
 profile_tools() { # profile_tools NAME: NAME_TOOLS in profiles.rs, one per line, sorted
