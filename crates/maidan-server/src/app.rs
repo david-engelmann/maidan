@@ -87,21 +87,83 @@ pub const CONSOLE_CSP: &str = "default-src 'self'; script-src 'self'; style-src 
 pub const CONSOLE_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 /// The console's CSP for this instance: Cloudflare's challenge origin appears
-/// only when Turnstile is on.
-pub fn console_csp(state: &AppState) -> &'static str {
-    if state.turnstile.is_some() {
-        CONSOLE_CSP_TURNSTILE
-    } else {
-        CONSOLE_CSP
-    }
+/// only when Turnstile is on, and the sign-in provider's only when OIDC is.
+pub fn console_csp(state: &AppState) -> String {
+    with_signup_form_action(
+        state,
+        if state.turnstile.is_some() {
+            CONSOLE_CSP_TURNSTILE
+        } else {
+            CONSOLE_CSP
+        },
+    )
 }
 
 /// The waitlist page's CSP for this instance, as [`console_csp`] chooses.
-pub fn landing_csp(state: &AppState) -> &'static str {
-    if state.turnstile.is_some() {
-        LANDING_CSP_TURNSTILE
-    } else {
-        LANDING_CSP
+pub fn landing_csp(state: &AppState) -> String {
+    with_signup_form_action(
+        state,
+        if state.turnstile.is_some() {
+            LANDING_CSP_TURNSTILE
+        } else {
+            LANDING_CSP
+        },
+    )
+}
+
+/// `policy` with the sign-in provider's origin added to `form-action`. The
+/// console's "Create your workspace" form posts to `/auth/oidc/signup`,
+/// which answers 303 to the provider. With `form-action 'self'` alone the
+/// browser blocked that hop: the click did nothing, and a second click spent
+/// a Turnstile token that was already used. The consent page widens its
+/// policy the same way for the client's redirect.
+fn with_signup_form_action(state: &AppState, policy: &'static str) -> String {
+    widen_form_action(
+        policy,
+        state
+            .oidc
+            .as_ref()
+            .and_then(|oidc| oidc.authorize_origin())
+            .as_deref(),
+    )
+}
+
+fn widen_form_action(policy: &str, origin: Option<&str>) -> String {
+    match origin {
+        Some(origin) => policy.replacen(
+            "form-action 'self'",
+            &format!("form-action 'self' {origin}"),
+            1,
+        ),
+        None => policy.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod form_action_tests {
+    use super::*;
+
+    #[test]
+    fn every_page_that_posts_sign_up_lets_the_provider_redirect_through() {
+        let provider = "https://team.cloudflareaccess.com";
+        for policy in [
+            CONSOLE_CSP,
+            CONSOLE_CSP_TURNSTILE,
+            LANDING_CSP,
+            LANDING_CSP_TURNSTILE,
+        ] {
+            let widened = widen_form_action(policy, Some(provider));
+            assert!(
+                widened.contains(&format!("form-action 'self' {provider};")),
+                "{widened}"
+            );
+            assert_eq!(widened.matches("form-action").count(), 1, "{widened}");
+        }
+    }
+
+    #[test]
+    fn without_a_provider_the_policy_is_unchanged() {
+        assert_eq!(widen_form_action(CONSOLE_CSP, None), CONSOLE_CSP);
     }
 }
 
@@ -109,15 +171,15 @@ pub fn landing_csp(state: &AppState) -> &'static str {
 /// is never framed, never sniffed, and leaks no referrer to the links on it.
 fn landing_headers(
     content_type: &'static str,
-    csp: &'static str,
-) -> [(axum::http::HeaderName, &'static str); 5] {
+    csp: String,
+) -> [(axum::http::HeaderName, String); 5] {
     use axum::http::header;
     [
-        (header::CONTENT_TYPE, content_type),
+        (header::CONTENT_TYPE, content_type.to_string()),
         (header::CONTENT_SECURITY_POLICY, csp),
-        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-        (header::X_FRAME_OPTIONS, "DENY"),
-        (header::REFERRER_POLICY, "no-referrer"),
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+        (header::X_FRAME_OPTIONS, "DENY".to_string()),
+        (header::REFERRER_POLICY, "no-referrer".to_string()),
     ]
 }
 
@@ -1401,7 +1463,7 @@ pub fn router(state: AppState) -> Router {
              <title>maidan</title></head><body><h1>maidan</h1><ul>{items}</ul></body></html>"
         );
         (
-            landing_headers("text/html; charset=utf-8", ROUTE_INDEX_CSP),
+            landing_headers("text/html; charset=utf-8", ROUTE_INDEX_CSP.to_string()),
             [(header::CACHE_CONTROL, "no-cache")],
             page,
         )
@@ -1596,7 +1658,7 @@ pub fn router(state: AppState) -> Router {
 
     fn landing_body(
         headers: &axum::http::HeaderMap,
-        csp: &'static str,
+        csp: String,
         content_type: &'static str,
         body: &[u8],
     ) -> axum::response::Response {
