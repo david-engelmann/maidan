@@ -42,6 +42,8 @@ export type AdvisorProvider = {
 
 export type AdvisorStatus = {
   enabled: boolean;
+  /** Whether the server can keep a key for a workspace. Absent from a server that does not say, which is read as yes. */
+  can_store_key?: boolean;
   /** These four describe the provider a call that names none would ask. */
   key_source?: "workspace" | "instance" | null;
   provider?: string | null;
@@ -65,6 +67,9 @@ export const KEY_NAME: Record<ProviderId, string> = {
  * Workers AI it calls. Every other provider's is the key alone.
  */
 export const needsAccount = (provider: ProviderId): boolean => provider === "cloudflare";
+
+/** Said in place of the key forms on a server that has no encryption key to keep one with. */
+export const KEY_CANNOT_STORE = "This server cannot store a decision model key. Its operator has not set an encryption key.";
 
 /** The providers a call from this workspace can ask now. */
 export function usableProviders(status: AdvisorStatus | null): AdvisorProvider[] {
@@ -97,7 +102,7 @@ export const LAND_TITLE: Record<Land, string> = {
 /** One line under the title when nothing kept the advice from green. */
 export const ALL_CLEAR = "All ten readings are clear.";
 
-/** Why the advice is not green, one sentence a reason. */
+/** Why the advice is not green, one sentence a reason, for a reading the model settled. */
 const REASON: Record<string, string> = {
   unresolved_failure: "It reports something still failing.",
   different_work: "It reads as work on something other than this task.",
@@ -111,7 +116,40 @@ const REASON: Record<string, string> = {
   tests_not_reported: "The task asks for a code change, and no passing tests are reported.",
 };
 
-export function reasonText(reason: string): string {
+/**
+ * The same sentence when the model could not settle the judgment behind it.
+ * An unsettled warning sign keeps the advice from green, and the summary says
+ * what is true of it: the model is unsure, not that the sign is there.
+ */
+const UNSETTLED_REASON: Record<string, string> = {
+  unresolved_failure: "It is unclear whether something is still failing.",
+  left_undone: "It is unclear whether part of the task was left undone.",
+  asks_person: "It is unclear whether it asks a person a question first.",
+  beyond_task: "It is unclear whether it changes something the task did not ask for.",
+  changes_access: "It is unclear whether it changes sign-in or permissions.",
+  deletes_data: "It is unclear whether it deletes stored data.",
+  flags_risk: "It is unclear whether the agent warns about a risk.",
+};
+
+/** The tests reason rests on two judgments, and either may be the unsettled one. */
+function testsReason(unsure: { codeChange: boolean; tests: boolean }): string {
+  if (unsure.codeChange && unsure.tests) return "It is unclear whether the task asks for a code change and whether passing tests are reported.";
+  if (unsure.codeChange) return "It is unclear whether the task asks for a code change, and no passing tests are reported.";
+  if (unsure.tests) return "The task asks for a code change, and it is unclear whether passing tests are reported.";
+  return REASON.tests_not_reported;
+}
+
+/**
+ * One sentence for why the advice is not green. `judgments` are the ones the
+ * response carries: with them, a reason that rests on an unsettled judgment
+ * says it is unclear, and without them the sentence is the settled one.
+ * "Does not clearly show the task was done" is true of an unsettled reading
+ * as it is of a settled no, so it stands for both.
+ */
+export function reasonText(reason: string, judgments: Judgment[] = []): string {
+  const unsettled = (id: string) => judgments.some((j) => j.id === id && j.answer === "unsettled");
+  if (reason === "tests_not_reported") return testsReason({ codeChange: unsettled("code_change"), tests: unsettled("tests_passed") });
+  if (unsettled(reason)) return UNSETTLED_REASON[reason] ?? REASON[reason] ?? reason.replace(/_/g, " ");
   return REASON[reason] ?? reason.replace(/_/g, " ");
 }
 

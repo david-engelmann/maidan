@@ -1903,6 +1903,10 @@
               "null"
             ]
           },
+          "can_store": {
+            "description": "Whether this server can keep a token for the workspace. `false` when\nthe server has no `FEDERATION_ENCRYPTION_KEY`, and then a `PUT` is\nanswered `503`.",
+            "type": "boolean"
+          },
           "connected_at": {
             "format": "date-time",
             "type": [
@@ -1937,7 +1941,8 @@
           }
         },
         "required": [
-          "surface"
+          "surface",
+          "can_store"
         ],
         "type": "object"
       },
@@ -5174,6 +5179,10 @@
       "LandGateAdvisorStatus": {
         "description": "What a workspace has set up, for `GET /workspaces/{id}/land-gate/advisor`.",
         "properties": {
+          "can_store_key": {
+            "description": "Whether this instance can keep a key for a workspace. `false` when it\nhas no `FEDERATION_ENCRYPTION_KEY`, and then a `PUT` is refused with\n`409`.",
+            "type": "boolean"
+          },
           "enabled": {
             "description": "Whether this instance offers advice at all.",
             "type": "boolean"
@@ -5216,7 +5225,8 @@
           }
         },
         "required": [
-          "enabled"
+          "enabled",
+          "can_store_key"
         ],
         "type": "object"
       },

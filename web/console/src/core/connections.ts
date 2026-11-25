@@ -28,6 +28,8 @@ export type Connection = {
   connected_at: string | null;
   /** Null for a surface with nothing inbound. */
   inbound: Inbound | null;
+  /** Whether the server can keep a token. Absent from a server that does not say, which is read as yes. */
+  can_store?: boolean;
 };
 
 export type ConnectionsRead = { allowed: true; value: Connection[] } | { allowed: false };
@@ -97,6 +99,14 @@ export function surfaceName(id: string): string {
 
 /** Said in place of the connections to someone who may not see them. */
 export const CONNECTIONS_NEED = "Only a workspace admin sees and sets this workspace’s connections. Ask one to connect it.";
+
+/** Said in place of the forms on a server that has no encryption key to keep a token with. */
+export const CONNECTIONS_CANNOT_STORE = "This server cannot store connections. Its operator has not set an encryption key.";
+
+/** Whether the server has said it cannot keep any of these connections' tokens. */
+export function cannotStore(rows: Connection[]): boolean {
+  return rows.length > 0 && rows.every((row) => row.can_store === false);
+}
 
 /** Said above the rows. The token is checked once and then held where nobody can read it. */
 export const CONNECTIONS_HELP =

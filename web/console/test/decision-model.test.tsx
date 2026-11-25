@@ -197,3 +197,24 @@ test("Cloudflare's token is saved with the account it is for", async () => {
   await waitFor(() => expect(sent.length).toBe(2));
   expect(sent[1]).toBe(JSON.stringify({ api_key: "pplx-fixture", provider: "perplexity" }));
 });
+
+test("a server with no encryption key says so in place of the forms", async () => {
+  const router = withSession([read(() => ({ ...three(), can_store_key: false }))]);
+  await renderSignedIn(<DecisionModel ws="ws" />, router.fn);
+  await screen.findByText("This server cannot store a decision model key. Its operator has not set an encryption key.");
+  expect(screen.queryByLabelText(/^Your .* (API key|token)$/)).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Save the/ })).toBeNull();
+  expect(screen.queryByText(/Saving sends it to its provider once/)).toBeNull();
+  // The providers are still listed, with where each stands.
+  expect((screen.getAllByText(/Off for this workspace until it has a key\./)).length).toBe(3);
+});
+
+test("a server that can store a key, or does not say, offers the forms", async () => {
+  for (const body of [{ ...three(), can_store_key: true }, three()]) {
+    const router = withSession([read(() => body)]);
+    await renderSignedIn(<DecisionModel ws="ws" />, router.fn);
+    await screen.findByLabelText("Your TypeSafe API key");
+    expect(screen.queryByText(/cannot store a decision model key/)).toBeNull();
+    cleanup();
+  }
+});
