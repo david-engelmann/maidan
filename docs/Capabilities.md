@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v480.0.0](https://github.com/david-engelmann/maidan/releases/tag/v480.0.0) — the README links to the Glama listing, and 3 more
+
+MCP tool definitions say when to use each tool and describe every parameter, the workspace context names only channels the reader may see, a stdio session reports its release, and the Glama build file ships.
+
+- The README links to the Glama listing
+- A stdio session reports the release it runs
+- Tool definitions say when to use them and describe every parameter
+- The workspace context names only channels the reader may see
+
+`CHANGELOG.md` under `[480.0.0]` has every entry.
+
 ## [v479.0.0](https://github.com/david-engelmann/maidan/releases/tag/v479.0.0) — an unsettled reading reads as unsettled, and a server that cannot store secrets says so, and 3 more
 
 The advice summary says when a reading is unclear, a server that cannot store secrets says so before the form, member-event waits, the waiting inbox and share tickets follow current access, and the Copilot CLI plugin package and the HOL Guard contribution ship.
