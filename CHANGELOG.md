@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [479.0.0] — 2026-11-25
+
+The advice summary says when a reading is unclear, a server that cannot store secrets says so before the form, member-event waits, the waiting inbox and share tickets follow current access, and the Copilot CLI plugin package and the HOL Guard contribution ship.
+
+### An unsettled reading reads as unsettled, and a server that cannot store secrets says so
+
+- **Fixed:** The advice summary no longer states an unsettled reading as a fact. When the decision model could not settle the judgment behind a reason, the summary line says so, for example "It is unclear whether it changes sign-in or permissions." A settled yes keeps its plain sentence, and "It does not clearly show that the task was done." stays as it was for both. The tests reason names which of its two judgments is unclear.
+- **Added:** `GET /workspaces/{wid}/connections` rows carry `can_store`, and `GET /workspaces/{id}/land-gate/advisor` carries `can_store_key`. Both are `false` on a server without `FEDERATION_ENCRYPTION_KEY`, and the console then says "This server cannot store connections. Its operator has not set an encryption key." or "This server cannot store a decision model key. Its operator has not set an encryption key." in place of the forms. The 503 and 409 an API caller gets from a write are unchanged.
+
+### The HOL Guard contribution matches Guard's current schema
+
+- **Changed:** `scripts/gen-hol-guard.py` writes the per-extension trust binding Guard requires beside each contribution, checks every file against the rules Guard's validator applies, and names the OAuth 2.0 sign-in in the hosted descriptions. `listings/validation/hol-guard.md` records what was checked against Guard at which commit.
+
+### The GitHub Copilot CLI plugin package
+
+- **Added:** A GitHub Copilot CLI plugin in the Agent Plugins 1.0 shape. A root `plugin.json`, the worker (`maidan-claimant`) and reviewer (`maidan-reviewer`) skills under `skills/`, and a marketplace at `.github/plugin/marketplace.json` make it installable with `copilot plugin marketplace add david-engelmann/maidan` and `copilot plugin install maidan@maidan-plugins`. The plugin is free and production is self-hosted. It carries no MCP server, because Agent Plugins 1.0 passes remote config literally. The server is added with `copilot mcp add`, pointing at `/mcp/streamable` (or `/mcp/worker` for a seat that runs only the core worker loop). A contract test keeps the manifest shape and holds the bundled skills byte for byte to the examples under `examples/claude-code/`. The validation record is `listings/validation/copilot-plugin.md`.
+- **Changed:** The worker runbook's harness table names Copilot CLI (`"harness": "copilot"`).
+
+### Member-event waits and share tickets follow current access
+
+- **Security:** `wait_for_mention` now applies the one event-visibility rule the live streams use (`EventVisibility`) on its live and lookback paths. It checked only the event's thread, so an event addressed to the caller that named a channel and no thread could be handed over from a private channel the caller is not in, or from the shared DM channel. `wait_for_notification` and the notification listing apply the same channel rule to channel-only rows, and the waiting inbox (MCP and REST) lists only assigned threads the caller can still open.
+- **Security:** a share ticket is checked against its creator on every use. A ticket whose creator left the private channel it shares, was removed or deactivated, or minted it with an API token that has since been revoked answers as an unknown ticket, says nothing of why, and is revoked with a `share_ticket.revoke` audit row naming the reason. Share tickets now record the token that minted them (migration 0244, both backends); tickets minted on a browser session or before the migration are held to their creator's membership alone.
+
 ## [478.0.0] — 2026-11-24
 
 A workspace connects its own GitHub, Slack and Linear, receives its own inbound events and manages its outbound webhooks in the console. Live streams, share tickets, digests and run counts show a member only what it may read, and a federated mention notifies only members of its own workspace.
