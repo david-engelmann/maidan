@@ -274,9 +274,7 @@ async fn the_list_says_whether_this_server_can_store_a_connection() {
     let with_key = harness().await;
     let ada = with_key.signed_up("ada").await;
     let path = format!("/workspaces/{}/connections", ada.workspace.0);
-    let (status, listed) = with_key
-        .send(reqwest::Method::GET, &ada, &path, None)
-        .await;
+    let (status, listed) = with_key.send(reqwest::Method::GET, &ada, &path, None).await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     let listed: Value = serde_json::from_str(&listed).unwrap();
     assert!(

@@ -236,12 +236,10 @@ pub async fn set_land_gate_advisor(
         .await?;
     // What is stored now. Should this read fail after the write committed,
     // the answer is what the write made true of the status read before it.
-    Ok(Json(
-        match status_of(&state, advisor, workspace_id).await {
-            Ok(now) => now,
-            Err(_) => before.with_key(provider, Some(AdvisorKeySource::Workspace)),
-        },
-    ))
+    Ok(Json(match status_of(&state, advisor, workspace_id).await {
+        Ok(now) => now,
+        Err(_) => before.with_key(provider, Some(AdvisorKeySource::Workspace)),
+    }))
 }
 
 /// `DELETE /workspaces/:id/land-gate/advisor`: forget this workspace's key
@@ -282,12 +280,10 @@ pub async fn clear_land_gate_advisor(
     let left = advisor
         .has_instance_key(provider)
         .then_some(AdvisorKeySource::Instance);
-    Ok(Json(
-        match status_of(&state, advisor, workspace_id).await {
-            Ok(now) => now,
-            Err(_) => before.with_key(provider, left),
-        },
-    ))
+    Ok(Json(match status_of(&state, advisor, workspace_id).await {
+        Ok(now) => now,
+        Err(_) => before.with_key(provider, left),
+    }))
 }
 
 pub async fn set_land_gate(
