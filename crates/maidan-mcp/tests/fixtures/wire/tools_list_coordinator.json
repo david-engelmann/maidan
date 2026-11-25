@@ -9,14 +9,16 @@
         "readOnlyHint": false,
         "title": "Add reviewer"
       },
-      "description": "Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.",
+      "description": "Name a member as an eligible reviewer for a thread. While no reviewer is named, any qualifying member may review; once one is named, only the named members count, so adding the first reviewer narrows who can approve. Returns {added: true} for a new reviewer and {added: false} when the member was already named, so repeating the call is safe. The member must be in your workspace. Use list_reviewers to see the set, remove_reviewer to take one off, and set_review_requirement for how many approvals the thread needs. Requires thread:transition.",
       "inputSchema": {
         "properties": {
           "member_id": {
+            "description": "UUID of the member to name as a reviewer. The member must belong to your workspace.",
             "format": "uuid",
             "type": "string"
           },
           "thread_id": {
+            "description": "UUID of the thread to name a reviewer for. You must be able to read it.",
             "format": "uuid",
             "type": "string"
           }
@@ -83,19 +85,20 @@
         "readOnlyHint": false,
         "title": "Assign thread"
       },
-      "description": "Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.",
+      "description": "Assign a thread to a member and hand it off, replacing any current holder: the new assignee gets a fresh claim_lease_id with no lease deadline and a reset working clock. Use claim_thread to take an unassigned thread yourself (it refuses when someone holds it) and unassign_thread to clear the assignee. Emits thread_assignment_changed carrying the previous assignee and your optional note, and returns the updated thread. The assignee must belong to the thread's workspace, and the call is refused for a review whose change the assignee's own model family wrote. Requires thread:transition.",
       "inputSchema": {
         "properties": {
           "assignee_id": {
-            "description": "member to assign the thread to",
+            "description": "UUID of the member to hand the thread to. The member must belong to the thread's workspace; the current assignee, if any, is replaced.",
             "format": "uuid",
             "type": "string"
           },
           "note": {
-            "description": "optional handoff note for the assignee",
+            "description": "Handoff text delivered to subscribers on the thread_assignment_changed event. Omitted, the event carries no note.",
             "type": "string"
           },
           "thread_id": {
+            "description": "UUID of the thread to assign. You must be able to read it.",
             "format": "uuid",
             "type": "string"
           }
@@ -783,11 +786,11 @@
         "readOnlyHint": true,
         "title": "List child threads"
       },
-      "description": "A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.",
+      "description": "List a parent thread's child threads, oldest first, each as a thread object plus message_count, the number of its live messages. This gives a threaded view of N replies per child without loading any child's messages; tombstoned children are excluded. To read the messages inside a child, call list_messages with the child's id. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "thread_id": {
-            "description": "The parent thread id.",
+            "description": "UUID of the parent thread whose children to list. The caller must be able to read the thread's channel.",
             "format": "uuid",
             "type": "string"
           }
@@ -1026,14 +1029,16 @@
         "readOnlyHint": false,
         "title": "Mark inbox read"
       },
-      "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox. Requires member:self.",
+      "description": "Move a member's mention inbox read-cursor forward to a given instant, so mentions at or before it count as read, and return the updated inbox: items (up to 50), unread_count and last_read_at. The cursor never moves backward, so an earlier instant than the current cursor changes nothing. This is the cursor for get_inbox; notifications are cleared with mark_notification_read or mark_all_notifications_read instead. The member_id must be the caller. Requires member:self.",
       "inputSchema": {
         "properties": {
           "member_id": {
+            "description": "UUID of the member whose inbox to advance. It must be the caller's own member id, otherwise the call is refused.",
             "format": "uuid",
             "type": "string"
           },
           "read_through": {
+            "description": "RFC 3339 timestamp, for example 2026-11-25T14:30:00Z. Mentions created at or before this instant are marked read. An instant earlier than the current cursor is ignored.",
             "format": "date-time",
             "type": "string"
           }
@@ -1148,36 +1153,39 @@
         "readOnlyHint": true,
         "title": "Search messages"
       },
-      "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets, each naming its channel (channel_name), thread (thread_title) and author (author_handle) beside their ids.",
+      "description": "Search the messages in a workspace by lexical, semantic or hybrid match, best hit first, optionally narrowed by channel, author, author kind and a time window. Each hit has message_id, thread_id, channel_id, author_id, posted_at, snippet, body, rank and score from 0 to 1, plus channel_name, thread_title and author_handle. Private channels and DMs the caller cannot read are never searched. Semantic and hybrid modes embed the query and count against the workspace's embedding allowance; lexical does not. To list a thread's messages in order use list_messages instead. Requires search:query.",
       "inputSchema": {
         "properties": {
           "after": {
-            "description": "Only messages posted at/after this RFC 3339 instant (inclusive).",
+            "description": "Only messages posted at or after this RFC 3339 instant (inclusive).",
             "format": "date-time",
             "type": "string"
           },
           "author_id": {
+            "description": "UUID of a member. Only messages written by this member are returned.",
             "format": "uuid",
             "type": "string"
           },
           "before": {
-            "description": "Only messages posted before this RFC 3339 instant (exclusive) — a half-open window with after.",
+            "description": "Only messages posted before this RFC 3339 instant (exclusive), so together with after it forms a half-open window.",
             "format": "date-time",
             "type": "string"
           },
           "channel_id": {
+            "description": "UUID of a channel. Only messages in this channel are returned.",
             "format": "uuid",
             "type": "string"
           },
           "embedding_model": {
-            "description": "Semantic/hybrid only: registered model name (default: active provider).",
+            "description": "Semantic and hybrid modes only: name of the registered embedding model whose vectors to match against. Defaults to the server's active embedding provider.",
             "type": "string"
           },
           "hybrid_weight": {
-            "description": "Hybrid only: semantic weight in [0,1] (default 0.5). combined = w*semantic + (1-w)*lexical over normalized scores.",
+            "description": "Hybrid mode only: weight given to the semantic score, from 0 to 1, defaulting to 0.5. The combined score is weight times the semantic score plus one minus weight times the lexical score, over normalized scores.",
             "type": "number"
           },
           "kind": {
+            "description": "Only messages whose author is of this kind: human or agent.",
             "enum": [
               "human",
               "agent"
@@ -1186,12 +1194,14 @@
           },
           "limit": {
             "default": 25,
+            "description": "Maximum number of hits to return. Defaults to 25, from 1 to 500.",
             "maximum": 500,
             "minimum": 1,
             "type": "integer"
           },
           "mode": {
             "default": "lexical",
+            "description": "How to match. lexical (the default) uses full-text keyword search. semantic embeds the query and ranks by meaning. hybrid blends the two using hybrid_weight.",
             "enum": [
               "lexical",
               "semantic",
@@ -1200,15 +1210,17 @@
             "type": "string"
           },
           "query": {
+            "description": "The search text, which must not be empty. In lexical mode it is matched as keywords; in semantic and hybrid modes it is embedded and compared by meaning.",
             "minLength": 1,
             "type": "string"
           },
           "snippet_only": {
             "default": false,
-            "description": "Drop full message body from each hit (keep only the snippet) to save tokens.",
+            "description": "When true, each hit drops its full body and keeps only the snippet, to save tokens. Defaults to false.",
             "type": "boolean"
           },
           "workspace_id": {
+            "description": "UUID of the workspace to search. It must be the caller's own workspace.",
             "format": "uuid",
             "type": "string"
           }
@@ -1350,14 +1362,15 @@
         "readOnlyHint": false,
         "title": "Set thread steer"
       },
-      "description": "Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.",
+      "description": "Set a thread's persisted steer, the durable guidance a resuming or newly assigned agent should follow, replacing any earlier steer (the latest write wins), and return {thread_id, steer, steered_by, steered_at} with the caller as steered_by. The steer stays on the thread across claims and handoffs and emits no event; a reader picks it up with get_thread_steer. Use it for standing guidance rather than a one-off reply, which belongs in a message. Requires thread:transition.",
       "inputSchema": {
         "properties": {
           "steer": {
-            "description": "the steering instruction",
+            "description": "The steering instruction as plain text. It replaces the thread's current steer in full.",
             "type": "string"
           },
           "thread_id": {
+            "description": "UUID of the thread to steer. The caller must be able to read the thread's channel.",
             "format": "uuid",
             "type": "string"
           }
@@ -1411,20 +1424,21 @@
         "readOnlyHint": true,
         "title": "Wait for notification"
       },
-      "description": "Block until the member has an unread notification of any kind (a mention, or an event routed to them as owner or follower), or the timeout lapses. Reads the notification ledger, so it also returns a row written while you were not waiting: pass since_log_id (the highest source_log_id you have seen) and it returns the oldest unread notification after it; omit it to wait for one newer than this call. Returns that notification with the thread's title and a short reason, or null on timeout. Never marks it read.",
+      "description": "Block until you have an unread notification of any kind (a mention, or an event routed to you as owner or follower) and return it with the thread's title and a short reason, or null when the timeout lapses. Use wait_for_mention to wake on mentions only, and list_notifications to read what already waits. It reads the notification ledger, so with since_log_id (the highest source_log_id you have seen) it returns the oldest unread notification after it, including one written while you were not waiting; omitted, only notifications for events after the call count. It never marks the notification read; use mark_notification_read for that. member_id must be your own. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "member_id": {
+            "description": "UUID of the member whose notifications to await. Must be your own member id; another member's id is refused.",
             "format": "uuid",
             "type": "string"
           },
           "since_log_id": {
-            "description": "return the oldest unread notification whose source_log_id is greater than this, including one written before the call; omitted, only notifications for events after the call",
+            "description": "Return the oldest unread notification whose source_log_id is greater than this, including one written before the call. Omitted, only notifications for events after the call count.",
             "type": "integer"
           },
           "timeout_ms": {
             "default": 30000,
-            "description": "long-poll window in milliseconds",
+            "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
             "maximum": 300000,
             "minimum": 1,
             "type": "integer"
@@ -1445,19 +1459,20 @@
         "readOnlyHint": true,
         "title": "Wait for result"
       },
-      "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.",
+      "description": "Block until the task named by thread_id produces its result (thread_result_set) and return the result record {thread_id, result, produced_by, produced_at}, or null when the timeout lapses; this is the wait in spawn, wait, aggregate. Unlike the event waits it returns the stored result rather than an event, and it needs a thread_id. A live wait does not see a result that already exists: read it with get_thread_result first, or use get_dependency_results for every dependency result of a parent at once. since_log_id replays a result set on this thread after that log_id before waiting live. To put a deadline on a thread instead, use set_wait. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "since_log_id": {
-            "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+            "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
             "type": "integer"
           },
           "thread_id": {
+            "description": "UUID of the task thread whose result to await. You must be able to read it.",
             "format": "uuid",
             "type": "string"
           },
           "timeout_ms": {
-            "description": "wait window ms (default 30000, clamped 1000-300000)",
+            "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
             "type": "integer"
           }
         },

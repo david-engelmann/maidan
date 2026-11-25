@@ -150,10 +150,11 @@
         "readOnlyHint": false,
         "title": "Claim next thread"
       },
-      "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).",
+      "description": "Claim the next piece of work in one channel: the claimable thread with the highest priority (aged up by hours waited), oldest first among equals, leased to you. Use claim_next_workspace_thread to draw from every channel you can read in one call, and claim_thread to take one thread you already know by id. Claimable means open, unassigned or its lease lapsed, dependencies finished, skills held, no pending approval gate, not parked or blocked, and you not frozen. Returns the thread with its claim_lease_id (the fencing token that renew_claim, acknowledge_claim and release_claim ask for), its attributes and a content-addressed pin {uri, content_hash}, or null when nothing is claimable or you are at the workspace's work-in-progress limit; taking over a lapsed lease emits claim_expired for the dead holder, and every claim emits thread_assignment_changed. Requires thread:transition.",
       "inputSchema": {
         "properties": {
           "channel_id": {
+            "description": "UUID of the channel to claim from. You must be able to read it.",
             "format": "uuid",
             "type": "string"
           },
@@ -209,7 +210,7 @@
         "readOnlyHint": false,
         "title": "Claim next workspace thread"
       },
-      "description": "Atomically claim the oldest claimable thread across every channel of the workspace you may read (claim_next_thread for the whole workspace), so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
+      "description": "Claim the next piece of work across every channel of your workspace that you may read, in one call: the same selection, filters, lease and result as claim_next_thread, without the channel argument. Use claim_next_thread to draw from one channel only, claim_thread to take one thread by id, and get_workspace_queue_depth to count ready work before you ask. With wait_ms set and nothing claimable it holds the call open until work becomes claimable and claims it, so a worker needs no polling loop. A private channel's threads go only to its members and a DM's only to its participants. Returns the thread with its claim_lease_id, attributes and pin {uri, content_hash}, or null when nothing is claimable or you are at the workspace's work-in-progress limit. Requires thread:transition.",
       "inputSchema": {
         "properties": {
           "engine": {
@@ -1225,21 +1226,21 @@
         "readOnlyHint": true,
         "title": "Wait for ready"
       },
-      "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
+      "description": "Block until a task becomes ready, meaning its last blocking dependency reached a terminal state (thread_ready), and return the ThreadReady event, or null when the timeout lapses. It answers only that dependency signal: use wait_for_blocked_resolved for an explicit block being cleared, wait_for_claim_expired for a lapsed claim, wait_for_event for several kinds at once, and claim_next_thread to take ready work that already exists. Scoped to channel_id when given, else any thread you may read in the workspace. since_log_id replays a ThreadReady recorded after that log_id before waiting live; without it only readiness signalled after the call counts. To put a deadline on a thread instead, use set_wait. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "channel_id": {
-            "description": "optional: scope to one channel's tasks",
+            "description": "UUID of a channel; only readiness of its tasks counts. Omitted, any thread you may read in the workspace.",
             "format": "uuid",
             "type": "string"
           },
           "since_log_id": {
-            "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+            "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
             "type": "integer"
           },
           "timeout_ms": {
             "default": 30000,
-            "description": "long-poll window in milliseconds",
+            "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
             "maximum": 300000,
             "minimum": 1,
             "type": "integer"
