@@ -12,9 +12,16 @@ is blocked. The contributions are generated, never edited: the inputs are
 
 The policy is checked before anything is written: every tool has one tier,
 the read tier is exactly the read-only tools, and a write that reaches outside
-Maidan is in a reviewed tier unless the policy says why not.
+Maidan is in a reviewed tier unless the policy says why not. Each contribution
+is also checked against the rules Guard's own validator applies (its schema,
+icon list, reserved commands and the no-allow rule for remote and direct
+commands), as read from Guard at the commit named in listings/validation/hol-guard.md.
 
-    python3 scripts/gen-hol-guard.py           # write listings/hol-guard/mcp.*.json
+Guard also wants one trust binding per contribution, which its own helper
+writes as external and opt-in. This script writes the same bytes to
+listings/hol-guard/trust/, so the upstream submission is complete.
+
+    python3 scripts/gen-hol-guard.py           # write listings/hol-guard/mcp.*.json and trust/*.json
     python3 scripts/gen-hol-guard.py --check   # fail when they are stale (CI)
     python3 scripts/gen-hol-guard.py --local   # the same policy as Guard custom-extension choices
 
@@ -32,6 +39,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "listings" / "hol-guard"
+TRUST = OUT / "trust"
 POLICY = OUT / "policy.json"
 ANNOTATIONS = ROOT / "crates" / "maidan-mcp" / "tests" / "fixtures" / "tool-annotations.json"
 PROFILES = ROOT / "crates" / "maidan-mcp" / "src" / "profiles.rs"
@@ -41,6 +49,21 @@ REPO = "https://github.com/david-engelmann/maidan"
 REVIEWED = {"review", "block"}
 STATES = {"inherit", "review", "block"}  # Guard refuses allow from a remote or direct-command server.
 MAX_NAMED = 79  # Guard's schema caps tools at 80, and `other` takes one.
+
+# Guard's own validator (guard/runtime/mcp_server_contribution.py) takes these
+# icons and these package launchers, and reserves these command names.
+ICON_NAMES = {"HiMiniBolt", "HiMiniCommandLine", "HiMiniCube", "HiMiniFolder", "HiMiniGlobeAlt", "HiMiniCloud"}
+TOP_LEVEL = {
+    "schemaVersion", "id", "version", "name", "description", "trustClass", "activation", "publisher", "icon",
+    "homepage", "license", "launch", "riskClasses", "tools", "referenceUrls", "saferAlternatives",
+}
+RESERVED_COMMANDS = {
+    "bash", "busybox", "bun", "bunx", "cargo", "cmd", "csh", "dash", "deno", "docker", "dotnet", "env", "fish",
+    "go", "java", "ksh", "lua", "node", "nodejs", "npm", "npx", "perl", "php", "pipx", "pnpm", "podman",
+    "powershell", "pwsh", "py", "python", "python3", "pythonw", "ruby", "sh", "sudo", "tcsh", "ts-node", "tsx",
+    "uv", "uvx", "wsl", "yarn", "zsh",
+}
+OAUTH_NOTE = "Sign-in is OAuth 2.0, with Maidan as its own authorization server."
 
 PUBLISHER = {
     "id": "io.github.david-engelmann",
@@ -134,6 +157,81 @@ def contribution(*, slug: str, name: str, description: str, icon: str, launch: d
     }
 
 
+def normalized_tool(name: str) -> str:
+    """Guard folds tool names this way before it compares them."""
+    compact = "".join(ch.lower() if ch.isalnum() else "-" for ch in name.strip()).strip("-")
+    return "-".join(part for part in compact.split("-") if part)
+
+
+def check_against_guard(body: dict) -> list[str]:
+    """The rules Guard's schema and validator apply to a contribution, restated."""
+    slug = body["id"]
+    errors = []
+    if set(body) - TOP_LEVEL or {"schemaVersion", "id", "version", "name", "description", "trustClass", "activation",
+                                 "publisher", "icon", "launch", "riskClasses", "tools", "saferAlternatives"} - set(body):
+        errors.append("top-level keys differ from Guard's schema")
+    if not re.fullmatch(r"mcp\.[a-z0-9]+(?:[.-][a-z0-9]+)*", slug) or len(slug) > 256:
+        errors.append("id is not a valid Guard id")
+    if not re.fullmatch(r"[1-9][0-9]*\.[0-9]+\.[0-9]+", body["version"]):
+        errors.append("version is not major.minor.patch with a nonzero major")
+    if not 1 <= len(body["name"]) <= 128:
+        errors.append("name must be 1 to 128 characters")
+    if not 1 <= len(body["description"]) <= 512:
+        errors.append(f"description is {len(body['description'])} characters, Guard takes 1 to 512")
+    if body["trustClass"] != "external" or body["activation"] != "opt-in":
+        errors.append("a contribution is external and opt-in")
+    icon = body["icon"]
+    if icon["kind"] == "react-icon" and icon.get("name") not in ICON_NAMES:
+        errors.append(f"icon {icon.get('name')!r} is not on Guard's list")
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", icon.get("background", "#000000")):
+        errors.append("icon background is not a six-digit hex colour")
+    launch = body["launch"]
+    kind = launch["kind"]
+    if kind == "direct-command":
+        command = launch["command"]
+        valid = re.fullmatch(r"[a-z0-9][a-z0-9_-]*(?:\.[a-z0-9_-]+)*", command) and len(command) <= 128
+        if not valid or command.endswith((".exe", ".cmd", ".bat")) or command in RESERVED_COMMANDS:
+            errors.append(f"direct command {command!r} is not one Guard accepts")
+    elif kind == "remote-http":
+        url = launch["url"]
+        host_part = url.removeprefix("https://").split("/")[0]
+        if not url.startswith("https://") or len(url) > 260 or "@" in host_part or not url.isascii():
+            errors.append(f"remote url {url!r} is not a public HTTPS endpoint Guard accepts")
+        names = launch["serverNames"]
+        if not 1 <= len(names) <= 8 or len(set(names)) != len(names):
+            errors.append("serverNames must hold 1 to 8 distinct names")
+    else:
+        errors.append(f"launch kind {kind!r} is not one Maidan uses")
+    if not 1 <= len(body["riskClasses"]) <= 16 or len(set(body["riskClasses"])) != len(body["riskClasses"]):
+        errors.append("riskClasses must hold 1 to 16 distinct values")
+    if not 1 <= len(body["tools"]) <= 80:
+        errors.append(f"{len(body['tools'])} tool rows, Guard takes 1 to 80")
+    seen = set()
+    for row in body["tools"]:
+        key = normalized_tool(row["name"])
+        if not row["name"] or len(row["name"]) > 128 or key in seen:
+            errors.append(f"tool {row['name']!r} is empty, too long or a duplicate")
+        seen.add(key)
+        if row["state"] not in {"inherit", "review", "block"}:
+            errors.append(f"tool {row['name']!r} says {row['state']!r}, which a {kind} contribution cannot")
+    if not 1 <= len(body["saferAlternatives"]) <= 8 or any(len(a) > 256 for a in body["saferAlternatives"]):
+        errors.append("saferAlternatives must hold 1 to 8 entries of at most 256 characters")
+    if len(body["referenceUrls"]) > 32 or any(len(u) > 512 for u in body["referenceUrls"]):
+        errors.append("referenceUrls hold at most 32 entries of at most 512 characters")
+    return [f"{slug}: {error}" for error in errors]
+
+
+def catalog_id(contribution_id: str) -> str:
+    """Guard's catalog id for a contribution: mcp.maidan becomes command.mcp-maidan."""
+    return "command." + contribution_id.replace(".", "-", 1)
+
+
+def trust_binding(contribution_id: str) -> str:
+    """The bytes Guard's `refresh_extension_artifacts.py --trust-only` writes for a new id."""
+    body = {"schemaVersion": "guard.extension-trust-binding.v1", "extension": catalog_id(contribution_id), "trustClass": "external"}
+    return json.dumps(body, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
 def full_surface_tools(states: dict[str, str]) -> list[dict]:
     """Every reviewed or blocked tool by name; the rest inherit the person's policy."""
     named = sorted(name for name, state in states.items() if state in REVIEWED)
@@ -171,7 +269,8 @@ def build() -> dict[str, dict]:
                 "Maidan, the workspace where people and AI agents share threads, tasks, reviews and approvals, "
                 "at its full MCP endpoint. Review is required for approving gates and reviews, closing or deleting "
                 "work, delivering results outside Maidan, and changing tokens, secrets, members or limits; reading "
-                "a stored secret's value is blocked. Everything else follows your own Guard policy."
+                "a stored secret's value is blocked. Everything else follows your own Guard policy. "
+                f"{OAUTH_NOTE}"
             ),
             icon="HiMiniGlobeAlt",
             launch={"kind": "remote-http", "url": f"{HOSTED}/mcp/streamable", "serverNames": ["maidan"]},
@@ -203,7 +302,7 @@ def build() -> dict[str, dict]:
             description=(
                 f"Maidan's {profile} profile: a fixed list of the {len(names)} tools an agent needs for the "
                 f"{profile} loop, served at /mcp/{profile}. Every tool is named; state changes that bind others or "
-                "leave Maidan need review, and a tool the profile does not list is reviewed."
+                f"leave Maidan need review, and a tool the profile does not list is reviewed. {OAUTH_NOTE}"
             ),
             icon="HiMiniCube",
             launch={"kind": "remote-http", "url": f"{HOSTED}/mcp/{profile}", "serverNames": [f"maidan-{profile}"]},
@@ -235,25 +334,29 @@ def main() -> int:
         return print_local()
     check = "--check" in sys.argv[1:]
     files = build()
+    problems = [error for body in files.values() for error in check_against_guard(body)]
+    if problems:
+        fail("\nFAIL: ".join(problems))
+    expected = {OUT / name: render(body) for name, body in files.items()}
+    expected |= {TRUST / f"{catalog_id(body['id'])}.v1.json": trust_binding(body["id"]) for body in files.values()}
     stale = []
-    for name, body in files.items():
-        path = OUT / name
-        text = render(body)
+    for path, text in expected.items():
         if check:
             if not path.exists() or path.read_text() != text:
-                stale.append(name)
+                stale.append(path.relative_to(OUT).as_posix())
         else:
+            path.parent.mkdir(exist_ok=True)
             path.write_text(text)
-    present = {path.name for path in OUT.glob("mcp.*.json")}
-    for name in sorted(present - set(files)):
+    present = set(OUT.glob("mcp.*.json")) | set(TRUST.glob("command.mcp-*.v1.json"))
+    for path in sorted(present - set(expected)):
         if check:
-            stale.append(name)
+            stale.append(path.relative_to(OUT).as_posix())
         else:
-            (OUT / name).unlink()
+            path.unlink()
     if stale:
         fail(f"stale HOL Guard contributions: {', '.join(sorted(stale))}; run python3 scripts/gen-hol-guard.py")
     reviewed = sum(1 for row in files["mcp.maidan.json"]["tools"] if row["state"] in REVIEWED)
-    print(f"hol guard: ok ({len(files)} contributions, {reviewed} tools reviewed or blocked on the full surface)")
+    print(f"hol guard: ok ({len(files)} contributions and trust bindings, {reviewed} tools reviewed or blocked on the full surface)")
     return 0
 
 

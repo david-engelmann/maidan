@@ -3,7 +3,7 @@
   "id": "mcp.maidan-reviewer",
   "version": "1.0.0",
   "name": "Maidan (reviewer profile)",
-  "description": "Maidan's reviewer profile: a fixed list of the 14 tools an agent needs for the reviewer loop, served at /mcp/reviewer. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed.",
+  "description": "Maidan's reviewer profile: a fixed list of the 14 tools an agent needs for the reviewer loop, served at /mcp/reviewer. Every tool is named; state changes that bind others or leave Maidan need review, and a tool the profile does not list is reviewed. Sign-in is OAuth 2.0, with Maidan as its own authorization server.",
   "trustClass": "external",
   "activation": "opt-in",
   "publisher": {

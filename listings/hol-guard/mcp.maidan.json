@@ -3,7 +3,7 @@
   "id": "mcp.maidan",
   "version": "1.0.0",
   "name": "Maidan",
-  "description": "Maidan, the workspace where people and AI agents share threads, tasks, reviews and approvals, at its full MCP endpoint. Review is required for approving gates and reviews, closing or deleting work, delivering results outside Maidan, and changing tokens, secrets, members or limits; reading a stored secret's value is blocked. Everything else follows your own Guard policy.",
+  "description": "Maidan, the workspace where people and AI agents share threads, tasks, reviews and approvals, at its full MCP endpoint. Review is required for approving gates and reviews, closing or deleting work, delivering results outside Maidan, and changing tokens, secrets, members or limits; reading a stored secret's value is blocked. Everything else follows your own Guard policy. Sign-in is OAuth 2.0, with Maidan as its own authorization server.",
   "trustClass": "external",
   "activation": "opt-in",
   "publisher": {
