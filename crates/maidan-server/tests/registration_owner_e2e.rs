@@ -861,6 +861,7 @@ async fn ticket_and_invite_suite(backend: Backend) {
                 channel_id: c.channel,
                 owner_id: who.id,
                 created_by: who.id,
+                created_by_token: None,
                 token_hash: hash_secret(&format!("{}-ticket", who.handle)),
                 expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
                 artifact_shas: Vec::new(),

@@ -4,7 +4,7 @@ use sqlx::{PgPool, Row};
 
 use crate::{share_tickets, StoreError};
 
-const COLUMNS: &str = "id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, revoked_at, created_at";
+const COLUMNS: &str = "id, workspace_id, channel_id, owner_id, created_by, created_by_token, token_hash, expires_at, revoked_at, created_at";
 
 #[cfg(feature = "test-support")]
 pub async fn create(pool: &PgPool, new: NewShareTicket) -> Result<ShareTicket, StoreError> {
@@ -59,8 +59,8 @@ pub(crate) async fn create_on(
     share_tickets::ensure_channel_shareable(&channel_name, private, creator_is_member)?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_share_tickets
-            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, created_at, created_by_token)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING {COLUMNS}"
     ))
     .bind(id.0)
@@ -71,6 +71,7 @@ pub(crate) async fn create_on(
     .bind(&new.token_hash)
     .bind(new.expires_at)
     .bind(now)
+    .bind(new.created_by_token.map(|token| token.0))
     .fetch_one(&mut *tx)
     .await?;
     let ticket = row_to_ticket(&row);
@@ -204,6 +205,9 @@ fn row_to_ticket(row: &sqlx::postgres::PgRow) -> ShareTicket {
         channel_id: maidan_types::ChannelId(row.get("channel_id")),
         owner_id: maidan_types::MemberId(row.get("owner_id")),
         created_by: maidan_types::MemberId(row.get("created_by")),
+        created_by_token: row
+            .get::<Option<uuid::Uuid>, _>("created_by_token")
+            .map(maidan_types::ApiTokenId),
         token_hash: row.get("token_hash"),
         expires_at: row.get("expires_at"),
         revoked_at: row.get("revoked_at"),

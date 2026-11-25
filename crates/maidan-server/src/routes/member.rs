@@ -1102,10 +1102,19 @@ pub async fn get_member_waiting(
     let member = requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
     let sla = q.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
-    let assigned = state
+    // Being assigned a thread does not keep a private channel open to a member
+    // who has left it: list only the threads the caller can open, as
+    // `list_assigned_threads` does.
+    let mut assigned = Vec::new();
+    for thread in state
         .store
         .list_assigned_threads(member.workspace_id, MemberId(id))
-        .await?;
+        .await?
+    {
+        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, thread.id).await? {
+            assigned.push(thread);
+        }
+    }
     // Being named a reviewer does not grant access to a private channel: list
     // only the requests the caller can open (and so can act on).
     let mut reviews = Vec::new();

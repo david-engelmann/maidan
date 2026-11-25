@@ -746,6 +746,9 @@ mod session_workspaces_e2e;
 #[path = "../share_ticket_consumer_e2e.rs"]
 mod share_ticket_consumer_e2e;
 
+#[path = "../share_ticket_creator_standing_e2e.rs"]
+mod share_ticket_creator_standing_e2e;
+
 #[path = "../share_ticket_rest_e2e.rs"]
 mod share_ticket_rest_e2e;
 
