@@ -24,7 +24,8 @@ names. If a sentence outruns its evidence, fix the sentence.
 - **The launch gate comes first.** Submissions wait until the
   `maidan-launch-1.0` gate passes on the launch release, each with that
   release's validation record (Open Work, Next 14). After that the maintainer
-  has said go for every listing below (2026-11-14).
+  has said go for every listing below (2026-11-14). The gate passed on
+  `v478.0.0` and the maintainer confirmed it on 2026-11-25.
 
 ## Name and short description
 
@@ -73,7 +74,7 @@ Postgres." in place of the last sentence.
 > **The state lives outside the agents.** Tasks, claims, results, reviews and
 > files are stored in the server, with an append-only, hash-chained event log
 > you can replay and verify. Results go back where the work came from: a pull
-> request on GitHub, and Slack or Linear on a deployment that connects them.
+> request on GitHub, and Slack or Linear once the workspace connects them.
 >
 > **Connect any MCP client** over streamable HTTP, or use REST, WebSocket or
 > A2A. Every token is scoped to the capabilities it was given, and private
