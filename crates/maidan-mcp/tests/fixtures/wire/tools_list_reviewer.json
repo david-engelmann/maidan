@@ -210,16 +210,18 @@
         "readOnlyHint": true,
         "title": "List messages"
       },
-      "description": "List messages in a thread.",
+      "description": "List the messages in a thread, oldest first, excluding withdrawn (tombstoned) ones. Each message has id, author_id, body, metadata, content, posted_at, edited_at and origin. It returns the first limit messages with no cursor, so a long thread's later messages are not reachable here; use get_thread_context for a prompt-ready pack with message cursors and a token budget, or search_messages to find messages by text. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "limit": {
             "default": 100,
+            "description": "Maximum number of messages to return, counted from the oldest. Defaults to 100; values outside 1 to 500 are clamped into that range.",
             "maximum": 500,
             "minimum": 1,
             "type": "integer"
           },
           "thread_id": {
+            "description": "UUID of the thread whose messages to list.",
             "format": "uuid",
             "type": "string"
           }
@@ -239,10 +241,11 @@
         "readOnlyHint": true,
         "title": "List reviews"
       },
-      "description": "List a thread's review decisions (reviewer, decision, note).",
+      "description": "List each reviewer's current decision on a thread, ordered by creation time. A row has reviewer_id, decision (approve or request_changes), note, the delegate actor_id if one submitted it, evidence_root, head_sha and dismissed_at, which is set on an approval that a later change request invalidated. Re-submitting replaces a reviewer's row, so earlier verdicts are in list_review_history; whether the requirement is met is in get_review_status. Submit with submit_review. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "thread_id": {
+            "description": "UUID of the thread whose review decisions to list.",
             "format": "uuid",
             "type": "string"
           }
@@ -285,7 +288,7 @@
         "readOnlyHint": false,
         "title": "Post message"
       },
-      "description": "Post a message to a thread as the authenticated member.",
+      "description": "Post a message to a thread as the authenticated member and return the stored message (id, thread_id, author_id, body, metadata, content, posted_at). Send body for plain text or content for typed blocks; when body is empty it is derived from the blocks, and sending neither is refused. A closed thread still takes messages, while a deleted or archived thread refuses them. The post appends a MessagePosted event, records each @handle mention and publishes a mention event for it, and runs the registered slash command when the body begins with /name (see register_slash_command). For a DM conversation id use post_dm_message. Requires message:post.",
       "inputSchema": {
         "anyOf": [
           {
@@ -301,11 +304,11 @@
         ],
         "properties": {
           "body": {
-            "description": "plain text; omit when sending typed content (body is derived from it)",
+            "description": "Plain-text message text, which is what search indexes; omit when sending typed content, or send an empty string. At least one of body or content is required.",
             "type": "string"
           },
           "content": {
-            "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+            "description": "Typed content blocks in order. Each block has a type: text {text}, code {code, language}, tool_use {id, name, input}, tool_result {tool_use_id, content, is_error}, or resource_link {uri, mime_type, title}. When body is empty, body is built from the blocks; tool_use blocks add no text.",
             "items": {
               "properties": {
                 "type": {
@@ -327,9 +330,11 @@
             "type": "array"
           },
           "metadata": {
+            "description": "Free-form JSON object stored with the message and returned with it, for example {\"artifacts\": [\"<sha256>\"]} to name artifacts the message refers to. Defaults to an empty object.",
             "type": "object"
           },
           "thread_id": {
+            "description": "UUID of the thread to post in. You must be able to read it; a thread in a private channel or DM you are not part of is refused.",
             "format": "uuid",
             "type": "string"
           }

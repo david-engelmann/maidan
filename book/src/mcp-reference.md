@@ -57,7 +57,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_capability_sets`
 
-**List capability sets.** List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.
+**List capability sets.** List the named capability sets and the atomic capabilities each expands to, as {sets: a list of {name, capabilities}}. maidan.agent.worker holds workspace:read, workspace:write, member:self, message:post, event:subscribe, search:query, artifact:upload and thread:transition. maidan.human.admin adds token:admin, channel:admin, secret:read, secret:admin, audit:read-global, operator:global and workspace:admin. A set is a recipe applied when a token is minted; whoami reports which sets you fully hold and attenuate_token derives a weaker token. Takes no arguments. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -356,7 +356,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_dm_conversations`
 
-**List DM conversations.** List DM conversations for a member in a workspace.
+**List DM conversations.** List the one-to-one DM conversations a member has in a workspace, most recently updated first, as {id, workspace_id, member_low_id, member_high_id, thread_id, created_at, updated_at}. Post to one with post_dm_message using its id, or read it by passing its thread_id to list_messages. Start one with open_dm_conversation; group DMs are listed by list_group_dms. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -366,10 +366,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -384,7 +386,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `post_dm_message`
 
-**Post DM message.** Post a message in a DM conversation.
+**Post DM message.** Post a message as the authenticated member into an existing 1:1 DM conversation, and return the stored message. The caller must be one of the two participants. Provide body, content or both; when body is empty it is derived from content, and a call with neither is refused. @handle mentions in the text are recorded and notified, and a message from a human clears the DM thread's declared agent status. Get the conversation id from open_dm_conversation or list_dm_conversations; post into a channel thread with post_message and into a group DM with post_group_dm_message. Requires message:post.
 
 **Capability:** `message:post`
 
@@ -406,11 +408,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   ],
   "properties": {
     "body": {
-      "description": "plain text; omit when sending typed content (body is derived from it)",
+      "description": "Plain-text message body, which is what search indexes; omit when sending typed content, and it is then derived from the content blocks.",
       "type": "string"
     },
     "content": {
-      "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+      "description": "Optional typed content blocks, each an object with a type of text (text), code (code, optional language), tool_use (id, name, input), tool_result (tool_use_id, content, optional is_error) or resource_link (uri, optional mime_type and title). Required when body is omitted.",
       "items": {
         "properties": {
           "type": {
@@ -432,10 +434,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "array"
     },
     "dm_conversation_id": {
+      "description": "UUID of the 1:1 DM conversation to post in, as returned by open_dm_conversation or list_dm_conversations. The caller must be one of its two members.",
       "format": "uuid",
       "type": "string"
     },
     "metadata": {
+      "description": "Optional JSON object of caller-defined metadata stored with the message. Defaults to an empty object.",
       "type": "object"
     }
   },
@@ -482,7 +486,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_channels`
 
-**List channels.** List channels in a workspace.
+**List channels.** List the channels of your own workspace that you can see: every public channel, the __dm__ system channel, and the private channels you belong to, sorted by name. Each row has id, workspace_id, name, topic, private, created_at, updated_at and tombstoned_at. Use get_workspace_context to get channels together with threads in one call, and list_dm_conversations for your direct messages. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -492,6 +496,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -1065,7 +1070,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_thread_budget`
 
-**Get thread budget.** A thread's budget envelope with accumulated usage, or null if none is set.
+**Get thread budget.** Read a thread's budget envelope with the usage accumulated against it. The max_ fields (tokens, usd_micros where $1 is 1,000,000, turns, wall_secs) are null when that dimension has no cap, and the used_ fields include tokens, usd_micros, turns, wall_secs and the input, output and cache token splits. Returns null when no budget was set and no usage has been reported. Set caps with set_thread_budget or update_thread_budget, and record usage with report_usage; usage_rollup aggregates spend across a workspace, thread or member. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -1075,6 +1080,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose budget to read.",
       "format": "uuid",
       "type": "string"
     }
@@ -1088,7 +1094,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `report_usage`
 
-**Report usage.** Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.
+**Report usage.** Record one retry-safe usage heartbeat for the claim you hold on a thread: token counts, the USD charge and the prices behind it. Maidan takes the reporter from your credential and the payer from the thread's workspace, and refuses the call unless you are the active holder of claim_lease_id. usd_micros must equal the charge computed from price_snapshot and tokens. Repeating an identical report returns the first outcome without charging twice; reusing the usage_report_id with different content is a conflict. If the thread's budget (tokens, USD, turns or wall time) is now exceeded, the run stops: the claim is released, a ClaimFailed event is appended and a dead-letter entry is recorded (see list_dlq). Returns the ledger entry with the updated budget, stopped and reason. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -1099,12 +1105,13 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "additionalProperties": false,
   "properties": {
     "claim_lease_id": {
-      "description": "active claim fencing token",
+      "description": "The fencing token of your active claim, from the claim response's thread.claim_lease_id. A stale or foreign token is refused.",
       "format": "uuid",
       "type": "string"
     },
     "evidence": {
       "additionalProperties": false,
+      "description": "Optional context about the call: provider, service_tier, batch, harness, harness_version, effort, cache_key, cache_miss_reason, pack_sha256 (up to 32 SHA-256 hex digests of Maidan packs the call used) and standard_price. standard_price is allowed only for a cheaper-lane call (batch true, or service_tier batch or flex) and must price the same tokens at or above usd_micros.",
       "properties": {
         "batch": {
           "type": "boolean"
@@ -1184,12 +1191,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "object"
     },
     "model": {
+      "description": "Model id the provider's response named, 1 to 255 characters after trimming.",
       "maxLength": 255,
       "minLength": 1,
       "type": "string"
     },
     "price_snapshot": {
       "additionalProperties": false,
+      "description": "Rates used for this call in micro-USD per million tokens: input_usd_micros_per_million, output_usd_micros_per_million, cache_read_usd_micros_per_million, cache_write_5m_usd_micros_per_million and cache_write_1h_usd_micros_per_million, all required non-negative integers. Maidan stores them as reporter-supplied evidence and keeps no rate card.",
       "properties": {
         "cache_read_usd_micros_per_million": {
           "minimum": 0,
@@ -1222,11 +1231,13 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "object"
     },
     "thread_id": {
+      "description": "UUID of the thread you hold a claim on.",
       "format": "uuid",
       "type": "string"
     },
     "tokens": {
       "additionalProperties": false,
+      "description": "Token counts for this call as {input, output, cache_read, cache_write_5m, cache_write_1h}, all required non-negative integers. input is uncached input only. A token budget counts input, output and both cache-write tiers; cache reads are priced into the charge but do not count toward a token budget.",
       "properties": {
         "cache_read": {
           "description": "cached input; not part of a token budget",
@@ -1261,15 +1272,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "turns": {
       "default": 0,
+      "description": "Model turns this report adds to the thread's turn count, a non-negative integer. Default 0.",
       "type": "integer"
     },
     "usage_report_id": {
-      "description": "globally unique idempotency key",
+      "description": "UUID you generate for this report, unique across all reports. Reuse it only to retry the exact same report.",
       "format": "uuid",
       "type": "string"
     },
     "usd_micros": {
-      "description": "validated USD charge in micros ($1 = 1000000)",
+      "description": "Charge for this call in micro-USD ($1 = 1000000), a non-negative integer. Must equal the sum over the five token kinds of count times rate per million, rounded up to a whole micro-dollar; a mismatch is refused.",
       "minimum": 0,
       "type": "integer"
     }
@@ -1435,7 +1447,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unassign_thread`
 
-**Unassign thread.** Clear a thread's assignee.
+**Unassign thread.** Clear a thread's assignee, whoever holds it, and return the updated thread. This also clears the claim lease, expiry and working clock, so the previous holder's fenced calls stop working, and it charges the time already worked to the thread's budget. It emits thread_assignment_changed naming the previous assignee, and succeeds even when the thread was already unassigned. For an agent giving up its own claim, use release_claim instead; to hand the thread to someone, use assign_thread. Requires thread:transition and read access to the thread's channel.
 
 **Capability:** `thread:transition`
 
@@ -1445,6 +1457,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread to unassign.",
       "format": "uuid",
       "type": "string"
     }
@@ -1668,7 +1681,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_priority`
 
-**Get priority.** The thread's dispatch-priority record, or null (which means the default priority 0) (G3).
+**Get priority.** Read a thread's dispatch-priority record: priority (an integer, higher is more urgent), set_by and set_at. Returns null when no priority was ever set, which dispatch treats as the default priority 0. claim_next_thread orders by this priority aged up with waiting time. Change it with set_priority. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -1678,6 +1691,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose priority record to read.",
       "format": "uuid",
       "type": "string"
     }
@@ -1772,7 +1786,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_unclaimable`
 
-**List unclaimable.** The parked (unclaimable) threads in a channel (G3), newest first — for triage.
+**List unclaimable.** List the threads parked from dispatch in a channel, newest first, as {thread_id, reason, marked_by, marked_at} rows. A parked thread is skipped by claim_next_thread and refuses claim_thread until mark_claimable clears it; park one with mark_unclaimable. Use it to triage parked work. Threads held by an explicit block reason are a separate list, list_blocked_threads. Requires workspace:read and read access to the channel.
 
 **Capability:** `workspace:read`
 
@@ -1782,6 +1796,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to inspect. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -1938,7 +1953,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_thread_status`
 
-**Get thread status.** The thread's active agent status declaration, or null when cleared. Requires workspace:read.
+**Get thread status.** Read the agent status declaration currently active on a thread: status (working, needs_input, needs_review, blocked or done), a one-line note, declared_by and declared_at. Returns null when none is active; a declaration is cleared by a human reply, by a newer declaration, or when the declarer's claim ends. This is what the agent says it is doing, not the thread's workflow state. The holder sets it with declare_status. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -1948,6 +1963,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose status declaration to read.",
       "format": "uuid",
       "type": "string"
     }
@@ -2219,7 +2235,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_delegation_policy`
 
-**Get delegation policy.** This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.
+**Get delegation policy.** Return your workspace's delegation policy {workspace_id, max_grant_days, is_default}. max_grant_days is the longest, in days, that a delegation grant may live, and is_default is true when the workspace has set nothing and the default of 90 days applies. Change it with set_delegation_policy and list existing grants with list_delegation_grants. Takes no arguments. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -2330,7 +2346,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_wip_limit`
 
-**Get WIP limit.** This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).
+**Get WIP limit.** Return {limit}: your workspace's WIP limit, the most live claims one member may hold at once, or null when none is set (unlimited). While a member is at the limit, claim_thread refuses a new claim and claim_next_thread returns null; a limit of 0 stops all new claims. Change it with set_wip_limit, and compare one member's live claims against it with get_member_wip. Takes no arguments. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3138,7 +3154,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_dependencies`
 
-**List thread dependencies.** List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).
+**List thread dependencies.** List the threads a task depends on and whether the task is ready to run. Returns {dependencies: a list of {thread_id, depends_on_thread_id, created_at}, ready}; ready is true when every dependency is closed or archived, and also when there are none. A thread that is not ready is not handed out by claim_next. Add and remove edges with add_thread_dependency and remove_thread_dependency, and use list_thread_dependents for the reverse direction. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3148,6 +3164,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the task thread whose dependencies to list. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -3260,7 +3277,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_occupancy`
 
-**Get workspace occupancy.** get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.
+**Get workspace occupancy.** Count your workspace's open task threads by stage, summed over every channel you can read, as {open, queued, claimed, working, blocked}. queued is claimable now, claimed is held on a live lease but not yet acknowledged, working is held and acknowledged, and blocked is parked or blocked; the last four add up to open. A private channel's threads count only for its members and a DM's only for its participants. Use get_channel_occupancy for one channel and get_workspace_queue_depth for the unclaimed-work view with filters. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3270,7 +3287,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "workspace_id": {
-      "description": "your own workspace (whoami's workspace_id)",
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -4033,7 +4050,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_member_skills`
 
-**List member skills.** List a member's declared skills.
+**List member skills.** List the skills a member has declared, ordered by skill, as records of member_id, skill and created_at. Declared skills decide which tasks the member is offered: claim_next_thread only hands over a thread whose required skills the member holds (see list_thread_required_skills), and governance skills confer authority over gates. A token can only read its own member's skills, so member_id must be the caller's own; another member's id is refused. Change the list with add_member_skill and remove_member_skill. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -4043,6 +4060,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose skills to list. It must be the member the calling token belongs to.",
       "format": "uuid",
       "type": "string"
     }
@@ -4083,7 +4101,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_required_skills`
 
-**List thread required skills.** List a task's required skills.
+**List thread required skills.** List the skills a task (thread) requires, ordered by skill, as records of thread_id, skill and created_at. claim_next_thread only hands the thread to a member who has declared every one of them, so call this to see why a member is not being offered a task. To change the list use add_thread_required_skill or remove_thread_required_skill; to see what a member has declared use list_member_skills. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -4093,6 +4111,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread (task) whose required skills to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -4880,7 +4899,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_memory_blocks`
 
-**List thread memory blocks.** List the memory blocks attached to a thread (its room objects), by label.
+**List thread memory blocks.** List the memory blocks attached to a thread (its room objects), ordered by label. Each block carries id, workspace_id, label, description, char_limit, read_only, value, owner_id, revision and timestamps. This shows only what is attached to the one thread; list_memory_blocks lists every block in the workspace, and get_memory_block reads one by label. Attach and detach with attach_memory_block and detach_memory_block. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -4890,6 +4909,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose attached memory blocks to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -5055,7 +5075,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_reviews`
 
-**List reviews.** List a thread's review decisions (reviewer, decision, note).
+**List reviews.** List each reviewer's current decision on a thread, ordered by creation time. A row has reviewer_id, decision (approve or request_changes), note, the delegate actor_id if one submitted it, evidence_root, head_sha and dismissed_at, which is set on an approval that a later change request invalidated. Re-submitting replaces a reviewer's row, so earlier verdicts are in list_review_history; whether the requirement is met is in get_review_status. Submit with submit_review. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -5065,6 +5085,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose review decisions to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -5189,7 +5210,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `require_land_gate`
 
-**Require land gate.** Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.
+**Require land gate.** Arm the land-gate close-gate on a thread that has no land-gate pointer yet, so a transition to closed is refused until a qualifying green pass is recorded with set_land_gate. An existing pointer is left unchanged, and repeating the call changes nothing. Returns the standing {required, pointer, land, landable}; read it later with get_land_gate and remove the gate with clear_land_gate. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -5199,6 +5220,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread to arm. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -5475,7 +5497,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_mentions`
 
-**List mentions.** List recent @mentions of a member (most recent first).
+**List mentions.** List the recent @mentions of a member, newest first, as {message_id, member_id, created_at} rows. A row names the message but does not carry its text; read the message with list_messages on its thread. Mentions made in a private channel or DM the member cannot read are left out. Use get_inbox for mentions plus the read cursor and wait_for_mention to block until the next one. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5485,10 +5507,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "limit": {
-      "description": "max results (default 50, max 500)",
+      "description": "Maximum rows to return, 1 to 500. Default 50; values outside the range are clamped.",
       "type": "integer"
     },
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -5718,7 +5741,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_manager_digest`
 
-**Get manager digest.** Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.
+**Get manager digest.** Return a member's unread work-lifecycle notifications since an instant, rolled up per channel: {member_id, since, channels: a list of {channel_id, results, gates, stuck}, spend_usd_micros, cost_per_completed_task_usd_micros}. results counts task results set, gates counts approval requests, and stuck counts claims expired, unacknowledged, stalled or failed plus wait timeouts; a null channel_id is the bucket for notifications with no channel. The spend figures are lifetime workspace totals, not limited to since. It is a notification view, not analytics: use usage_rollup for spend and list_notifications for the items. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5729,11 +5752,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "additionalProperties": false,
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     },
     "since": {
-      "description": "default 7 days ago",
+      "description": "RFC 3339 timestamp; only unread notifications created after it are counted. Default: 7 days before the call.",
       "format": "date-time",
       "type": "string"
     }
@@ -5747,7 +5771,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_unread_count`
 
-**Get unread count.** A member's unread-notification badge count.
+**Get unread count.** Return {count}, the number of unread notifications a member has, for a badge. Notifications that are read, snoozed until a later time, or from a private channel or DM the member can no longer read are not counted. List the notifications with list_notifications and clear them with mark_all_notifications_read. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5757,6 +5781,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -5897,7 +5922,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_notification_prefs`
 
-**List notification prefs.** List a member's notification preferences (per-kind mute flags).
+**List notification prefs.** List a member's notification preferences as {member_id, kind, muted, updated_at} rows, one per event kind the member has set. A kind with no row is not muted and still notifies. Change a preference with set_notification_pref; list_notifications returns the notifications themselves and get_unread_count their count. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5907,6 +5932,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -5951,7 +5977,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_delivery_mode`
 
-**Get delivery mode.** Get a member's email delivery mode (immediate when never set).
+**Get delivery mode.** Return {mode}, how a member's email notifications are delivered: immediate (one email per notification) or digest (a periodic rollup instead). A member who never set a mode reads immediate. Change it with set_delivery_mode. It returns neither the email address (get_member_email) nor mute settings (list_notification_prefs). member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5961,6 +5987,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -6103,7 +6130,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_channel_follows`
 
-**List channel follows.** List the channels a member follows.
+**List channel follows.** List the channels a member follows as {member_id, channel_id, created_at} rows; activity in a followed channel notifies the member. Change the list with follow_channel and unfollow_channel, and use list_thread_follows or list_member_follows for threads and members. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -6113,6 +6140,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member. Must be your own member id (whoami returns it); any other member is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -6182,7 +6210,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_follows`
 
-**List thread follows.** List the threads a member follows.
+**List thread follows.** List the threads a member follows, newest follow first, as records of member_id, thread_id and created_at. Following makes the member a recipient of notifications for that thread; change it with follow_thread and unfollow_thread. For channel follows use list_channel_follows, and for member-occupancy subscriptions use list_member_follows. A token can only read its own member's follows, so member_id must be the caller's own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -6192,6 +6220,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose followed threads to list. It must be the member the calling token belongs to.",
       "format": "uuid",
       "type": "string"
     }
@@ -6289,7 +6318,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_member_follows`
 
-**List member follows.** List the member-occupancy subscriptions owned by a member.
+**List member follows.** List the member-occupancy subscriptions a member owns, newest first, as records of follower_id, followed_id and created_at. A follower receives the followed member's work-lifecycle notifications and can read that member's presence and assigned work. Change them with follow_member and unfollow_member; for thread follows use list_thread_follows and for channel follows list_channel_follows. A token can only read its own member's subscriptions, so member_id must be the caller's own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -6300,6 +6329,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "additionalProperties": false,
   "properties": {
     "member_id": {
+      "description": "UUID of the follower member whose subscriptions to list. It must be the member the calling token belongs to.",
       "format": "uuid",
       "type": "string"
     }
@@ -6313,7 +6343,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_messages`
 
-**List messages.** List messages in a thread.
+**List messages.** List the messages in a thread, oldest first, excluding withdrawn (tombstoned) ones. Each message has id, author_id, body, metadata, content, posted_at, edited_at and origin. It returns the first limit messages with no cursor, so a long thread's later messages are not reachable here; use get_thread_context for a prompt-ready pack with message cursors and a token budget, or search_messages to find messages by text. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -6324,11 +6354,13 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "properties": {
     "limit": {
       "default": 100,
+      "description": "Maximum number of messages to return, counted from the oldest. Defaults to 100; values outside 1 to 500 are clamped into that range.",
       "maximum": 500,
       "minimum": 1,
       "type": "integer"
     },
     "thread_id": {
+      "description": "UUID of the thread whose messages to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -6342,7 +6374,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `post_message`
 
-**Post message.** Post a message to a thread as the authenticated member.
+**Post message.** Post a message to a thread as the authenticated member and return the stored message (id, thread_id, author_id, body, metadata, content, posted_at). Send body for plain text or content for typed blocks; when body is empty it is derived from the blocks, and sending neither is refused. A closed thread still takes messages, while a deleted or archived thread refuses them. The post appends a MessagePosted event, records each @handle mention and publishes a mention event for it, and runs the registered slash command when the body begins with /name (see register_slash_command). For a DM conversation id use post_dm_message. Requires message:post.
 
 **Capability:** `message:post`
 
@@ -6364,11 +6396,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   ],
   "properties": {
     "body": {
-      "description": "plain text; omit when sending typed content (body is derived from it)",
+      "description": "Plain-text message text, which is what search indexes; omit when sending typed content, or send an empty string. At least one of body or content is required.",
       "type": "string"
     },
     "content": {
-      "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+      "description": "Typed content blocks in order. Each block has a type: text {text}, code {code, language}, tool_use {id, name, input}, tool_result {tool_use_id, content, is_error}, or resource_link {uri, mime_type, title}. When body is empty, body is built from the blocks; tool_use blocks add no text.",
       "items": {
         "properties": {
           "type": {
@@ -6390,9 +6422,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "array"
     },
     "metadata": {
+      "description": "Free-form JSON object stored with the message and returned with it, for example {\"artifacts\": [\"<sha256>\"]} to name artifacts the message refers to. Defaults to an empty object.",
       "type": "object"
     },
     "thread_id": {
+      "description": "UUID of the thread to post in. You must be able to read it; a thread in a private channel or DM you are not part of is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -6511,7 +6545,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `record_mention`
 
-**Record mention.** Mark a member as mentioned in a message.
+**Record mention.** Record that a member is mentioned in a message, for a mention that is not written as an @handle in the text. The mention appears in the member's list_mentions and notifications and wakes any wait_for_mention on them; a mention_recorded event is emitted on every call, though a repeat keeps one mention row. Posting a message that contains @handle text already records those mentions, so use this only for explicit extra mentions. The member must belong to the message's workspace, otherwise the call is not found. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -6521,10 +6555,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member being mentioned. It must be a member of the same workspace as the message.",
       "format": "uuid",
       "type": "string"
     },
     "message_id": {
+      "description": "UUID of the message that mentions the member. The caller must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -6611,7 +6647,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `add_reaction`
 
-**Add reaction.** Add an emoji reaction to a message.
+**Add reaction.** Add the caller's emoji reaction to a message. A member holds at most one reaction per emoji per message, so repeating it keeps a single reaction, and a reaction_added event is emitted on each call. Returns {ok: true}. Remove it with remove_reaction and read reactions with list_reactions. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -6621,9 +6657,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "emoji": {
+      "description": "The reaction, usually a single emoji character. Surrounding whitespace is trimmed, and the result must be non-empty and at most 64 bytes.",
       "type": "string"
     },
     "message_id": {
+      "description": "UUID of the message to react to. The caller must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -6638,7 +6676,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `remove_reaction`
 
-**Remove reaction.** Remove an emoji reaction from a message.
+**Remove reaction.** Remove the caller's own emoji reaction from a message; other members' reactions are untouched. Returns {removed: true} when a reaction was deleted and {removed: false} when the caller had not reacted with that emoji, and emits a reaction_removed event only in the first case. Reverse it with add_reaction. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -6648,9 +6686,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "emoji": {
+      "description": "The emoji string the caller reacted with, matched exactly after trimming surrounding whitespace. It must be non-empty and at most 64 bytes.",
       "type": "string"
     },
     "message_id": {
+      "description": "UUID of the message to remove the reaction from.",
       "format": "uuid",
       "type": "string"
     }
@@ -6665,7 +6705,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_reactions`
 
-**List reactions.** List emoji reactions on a message.
+**List reactions.** List the emoji reactions on a message, oldest first. Each row is one member's one emoji, with message_id, member_id, emoji and created_at; reactions are not aggregated into counts. Add and remove them with add_reaction and remove_reaction. Requires workspace:read and read access to the message's thread.
 
 **Capability:** `workspace:read`
 
@@ -6675,6 +6715,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "message_id": {
+      "description": "UUID of the message whose reactions to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -6688,7 +6729,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `pin_message`
 
-**Pin message.** Pin a message to a thread.
+**Pin message.** Pin a message in a thread so it is listed by list_pins, recording the caller as the pinner. The message must belong to that thread, otherwise the call is refused. Pinning an already pinned message keeps a single pin. It emits a message_pinned event and returns {ok: true}. Reverse it with unpin_message. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -6698,10 +6739,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "message_id": {
+      "description": "UUID of the message to pin. It must be a message in thread_id.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread the message belongs to.",
       "format": "uuid",
       "type": "string"
     }
@@ -6716,7 +6759,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `unpin_message`
 
-**Unpin message.** Unpin a message from a thread.
+**Unpin message.** Remove a message's pin in a thread. Returns {removed: true} and appends a MessageUnpinned event only when the message was pinned; otherwise {removed: false} and no event. The message itself stays in the thread, and a pin set by another member can be removed too. See the pins with list_pins and pin with pin_message. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -6726,10 +6769,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "message_id": {
+      "description": "UUID of the pinned message to unpin.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread the message is pinned in. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -6744,7 +6789,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_pins`
 
-**List pins.** List pinned messages in a thread.
+**List pins.** List the pinned messages of a thread, oldest pin first, as records of thread_id, message_id, the pinning member_id and created_at. It returns references only, not message text; read the bodies with list_messages or get_thread_context. Pin and unpin with pin_message and unpin_message. Requires workspace:read and read access to the thread's channel.
 
 **Capability:** `workspace:read`
 
@@ -6754,6 +6799,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose pins to list.",
       "format": "uuid",
       "type": "string"
     }
@@ -6767,7 +6813,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `add_reference`
 
-**Add reference.** Add a typed reference between two threads or messages.
+**Add reference.** Create a typed edge from a source thread or message to a destination thread or message in the same workspace, and return the reference (id, src_kind, src_id, dst_kind, dst_id, relation, created_at). Refused when both ends are the same entity, an end does not exist, the ends are in different workspaces, the identical edge exists already, or a depends, supersedes or duplicates edge would close a cycle. Appends a ReferenceAdded event; read edges back with list_references. For task ordering that holds back claim_next use add_thread_dependency instead. Requires workspace:write and read access to both ends.
 
 **Capability:** `workspace:write`
 
@@ -6777,10 +6823,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "dst_id": {
+      "description": "UUID of the destination thread or message, as chosen by dst_kind. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
     "dst_kind": {
+      "description": "What dst_id names: thread or message.",
       "enum": [
         "thread",
         "message"
@@ -6788,14 +6836,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "relation": {
-      "description": "typed relation; controlled set: supports/refutes/defines/depends/duplicates/grounds/supersedes (other values are allowed and round-trip verbatim)",
+      "description": "Relation name from the src end to the dst end. Controlled set: supports, refutes, defines, depends, duplicates, grounds, supersedes, seeded_from. Any other string is accepted and stored as given.",
       "type": "string"
     },
     "src_id": {
+      "description": "UUID of the source thread or message, as chosen by src_kind. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
     "src_kind": {
+      "description": "What src_id names: thread or message.",
       "enum": [
         "thread",
         "message"
@@ -6858,7 +6908,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `upload_artifact`
 
-**Upload artifact.** Store bytes in the artifact substrate and register metadata.
+**Upload artifact.** Store a file in the workspace's content-addressed artifact store from base64 bytes and register its metadata, returning the artifact record with its sha256, size_bytes, kind and mime_type. Identical bytes share one sha256, and uploading them again overwrites the workspace's recorded kind and mime_type and emits another artifact_upserted event. The whole request must fit the server's request body limit (2 MiB by default); for larger files use begin_artifact_multipart, which needs an S3 backend. The upload is refused, and nothing stored, when the workspace is over its stored-bytes allowance or when a screenshot, recording or attachment would exceed its media quota. Use link_thread_artifact to attach the result to a thread as evidence. Requires artifact:upload.
 
 **Capability:** `artifact:upload`
 
@@ -6868,9 +6918,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "content_base64": {
+      "description": "The file's bytes, standard base64 encoded. It must decode and must not be empty.",
       "type": "string"
     },
     "kind": {
+      "description": "What the artifact is: screenshot, recording, transcript, code_dump or attachment. Screenshot, recording and attachment are media and count toward the workspace's media quota and can expire; transcript and code_dump are evidence and are never counted or expired.",
       "enum": [
         "screenshot",
         "recording",
@@ -6881,6 +6933,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "mime_type": {
+      "description": "Optional media type of the bytes, for example image/png, recorded on the artifact's metadata.",
       "type": "string"
     }
   },
@@ -6909,7 +6962,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `upload_artifact_multipart_part`
 
-**Upload multipart artifact part.** Upload one part of an in-progress multipart artifact.
+**Upload multipart artifact part.** Upload one part of a multipart artifact upload begun with begin_artifact_multipart, and return {part_number, etag}. Keep the etag of every part and pass them all to complete_artifact_multipart; discard the upload with abort_artifact_multipart. Refused for an empty part, invalid base64, a part_number outside 1 to 10000, an upload that belongs to another workspace, or a workspace that is over its stored-bytes allowance. Needs the S3 artifact backend and artifact:upload; for content that fits in one call use upload_artifact.
 
 **Capability:** `artifact:upload`
 
@@ -6919,16 +6972,20 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "content_base64": {
+      "description": "Bytes of this part, base64-encoded with the standard alphabet. Must not be empty.",
       "type": "string"
     },
     "object_key": {
+      "description": "The object_key returned by begin_artifact_multipart, of the form multipart/<your-workspace-uuid>/<uuid>. A key that belongs to another workspace is refused.",
       "type": "string"
     },
     "part_number": {
+      "description": "Position of this part in the final object, 1 to 10000. Parts are joined in part_number order at completion.",
       "minimum": 1,
       "type": "integer"
     },
     "upload_id": {
+      "description": "The upload_id returned by begin_artifact_multipart.",
       "type": "string"
     }
   },
@@ -6944,7 +7001,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `complete_artifact_multipart`
 
-**Complete multipart artifact upload.** Finish multipart upload, content-address bytes, and register artifact metadata.
+**Complete multipart artifact upload.** Finish a multipart upload: join the parts, content-address the result by SHA-256 and register it as an artifact in your workspace. Returns the artifact (id, sha256, size_bytes, mime_type, kind, uploaded_by, created_at) and appends an ArtifactUpserted event; read it back with get_artifact_metadata or get_artifact. Refused, with nothing stored, when the workspace is over its stored-bytes allowance or the result would exceed its media quota. Needs the S3 artifact backend and artifact:upload; the parts come from upload_artifact_multipart_part.
 
 **Capability:** `artifact:upload`
 
@@ -6954,6 +7011,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "kind": {
+      "description": "Artifact category recorded on the artifact: screenshot, recording, transcript, code_dump or attachment.",
       "enum": [
         "screenshot",
         "recording",
@@ -6964,12 +7022,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "mime_type": {
+      "description": "Optional MIME type to record on the artifact, for example image/png. Stored as given.",
       "type": "string"
     },
     "object_key": {
+      "description": "The object_key returned by begin_artifact_multipart, of the form multipart/<your-workspace-uuid>/<uuid>. A key that belongs to another workspace is refused.",
       "type": "string"
     },
     "parts": {
+      "description": "Every uploaded part as {part_number, etag}, using the etag that upload_artifact_multipart_part returned for it. At least one part is required, part numbers must be unique, and no etag may be empty.",
       "items": {
         "properties": {
           "etag": {
@@ -6988,6 +7049,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "array"
     },
     "upload_id": {
+      "description": "The upload_id returned by begin_artifact_multipart.",
       "type": "string"
     }
   },
@@ -7003,7 +7065,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `abort_artifact_multipart`
 
-**Abort multipart artifact upload.** Abort a failed multipart upload.
+**Abort multipart artifact upload.** Abort a multipart upload begun with begin_artifact_multipart and delete its temporary parts, so nothing is registered as an artifact. Returns {aborted: true}; storage cleanup is best effort, so a storage error is not reported. Use it when a part upload failed or the object is no longer wanted, and use complete_artifact_multipart to finish the upload instead. Needs the S3 artifact backend and artifact:upload, and the upload must belong to your workspace.
 
 **Capability:** `artifact:upload`
 
@@ -7013,9 +7075,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "object_key": {
+      "description": "The object_key returned by begin_artifact_multipart, of the form multipart/<your-workspace-uuid>/<uuid>. A key that belongs to another workspace is refused.",
       "type": "string"
     },
     "upload_id": {
+      "description": "The upload_id returned by begin_artifact_multipart.",
       "type": "string"
     }
   },
@@ -7029,7 +7093,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_artifact_metadata`
 
-**Get artifact metadata.** Fetch artifact metadata by sha256 hex digest.
+**Get artifact metadata.** Return one artifact's metadata by its SHA-256 digest: id, sha256, size_bytes, mime_type, filename, kind, uploaded_by and created_at, without the bytes (get_artifact returns metadata plus content_base64). An artifact from another workspace, or one tied only to a private channel or DM you cannot read, is NotFound, the same as a missing one. A malformed digest is refused as invalid. Find digests with list_thread_artifacts or in an upload result. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7039,6 +7103,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "sha256": {
+      "description": "SHA-256 of the artifact bytes as a 64-character hexadecimal string. A malformed value is refused rather than reported as not found.",
       "maxLength": 64,
       "minLength": 64,
       "type": "string"
@@ -7134,7 +7199,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `register_slash_command`
 
-**Register slash command.** Register a workspace slash command handler (http URL or MCP tool name).
+**Register slash command.** Register a workspace slash command: a message posted as /name text then runs the handler. With handler_kind http, Maidan POSTs a JSON payload (command, name, text, workspace_id, channel_id, thread_id, author_id, message_id) signed in the X-Maidan-Signature header to handler_target, and this call returns {command, secret} with the signing secret. With mcp_tool it runs the named MCP tool and returns the command. The name must not be in use by an active command; list them with list_slash_commands and free a name with revoke_slash_command. Requires workspace:write; mcp_tool also needs the capability the target tool requires, plus channel:admin when that tool is not read-only.
 
 **Capability:** `workspace:write`
 
@@ -7144,9 +7209,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "description": {
+      "description": "Optional text describing what the command does, stored with the command and returned by list_slash_commands.",
       "type": "string"
     },
     "handler_kind": {
+      "description": "http to deliver the command to a URL, or mcp_tool to run an MCP tool by name.",
       "enum": [
         "http",
         "mcp_tool"
@@ -7154,12 +7221,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "handler_target": {
+      "description": "For http, the URL that receives the POST; it must pass the server's outbound-request check. For mcp_tool, the exact name of an MCP tool, for example whoami; an unknown name is refused.",
       "type": "string"
     },
     "name": {
+      "description": "Command name. A leading slash is stripped and the name is lowercased; 1 to 32 characters from a-z, 0-9, underscore and hyphen.",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -7176,7 +7246,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_slash_commands`
 
-**List slash commands.** List registered slash commands in a workspace.
+**List slash commands.** List the workspace's registered slash commands that have not been revoked, ordered by name. Each has id, name, description, handler_kind (http, mcp_tool or wasi), handler_target and enabled; signing secrets are never returned. Add one with register_slash_command and remove one with revoke_slash_command. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7186,6 +7256,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "workspace_id": {
+      "description": "UUID of the workspace whose slash commands to list. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -7199,7 +7270,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `register_fsm_hook`
 
-**Register FSM hook.** Register an FSM hook invoked on matching thread state transitions.
+**Register FSM hook.** Register a hook that fires when a thread in the workspace changes state, for every matching transition, and return it. An http hook POSTs the transition as signed JSON to the target URL with X-Maidan-Event and X-Maidan-Signature headers; its response also carries the signing secret, which list_fsm_hooks never returns. An mcp_tool hook calls the named tool with workspace_id, channel_id, thread_id, actor_id, from_state and to_state. The hook runs with the registering token's authority and is skipped, with an audit row, once that token is revoked or no longer holds workspace:admin. Each call creates a new hook; remove one with revoke_fsm_hook. Requires workspace:admin.
 
 **Capability:** `workspace:admin`
 
@@ -7209,6 +7280,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "from_state": {
+      "description": "Only fire when the thread leaves this state: open, in_review, closed or archived. Omit it to match any previous state.",
       "enum": [
         "open",
         "in_review",
@@ -7218,6 +7290,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "handler_kind": {
+      "description": "How the hook is delivered: http to POST to a URL, or mcp_tool to call a Maidan tool. wasi is not supported for hooks.",
       "enum": [
         "http",
         "mcp_tool"
@@ -7225,12 +7298,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "handler_target": {
+      "description": "For http, the destination URL, which must pass the server's outbound-URL validation. For mcp_tool, the name of the MCP tool to call, which the registering token must itself be allowed to call.",
       "type": "string"
     },
     "label": {
+      "description": "Optional human-readable name for the hook.",
       "type": "string"
     },
     "to_state": {
+      "description": "Only fire when the thread enters this state: open, in_review, closed or archived. Omit it to match any new state.",
       "enum": [
         "open",
         "in_review",
@@ -7240,6 +7316,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of the workspace to register the hook in. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -7255,7 +7332,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_fsm_hooks`
 
-**List FSM hooks.** List registered FSM automation hooks in a workspace.
+**List FSM hooks.** List the workspace's registered FSM automation hooks that have not been revoked, oldest first. Each has id, label, from_state and to_state (null means any state), handler_kind, handler_target and enabled; the http signing secret is returned only when the hook is registered. Add a hook with register_fsm_hook and remove one with revoke_fsm_hook. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7265,6 +7342,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "workspace_id": {
+      "description": "UUID of the workspace whose FSM hooks to list. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -7419,7 +7497,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_context`
 
-**Get workspace context.** Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).
+**Get workspace context.** Pack a workspace for one prompt: the workspace record, the channels you can see (public ones, and private ones you belong to) sorted by name, a page of live threads (oldest first, only ones you can read) each with its messages, references and FSM transitions, and the glossary once at the top level. thread_limit sets the page size (default 10, max 50), and next_thread_cursor, when present, is passed back as thread_cursor for the next page. Use get_thread_context for a single thread with edits and replay options, and list_threads or find_threads to locate threads without packing them. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7430,35 +7508,44 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "properties": {
     "include_glossary": {
       "default": true,
-      "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it.",
+      "description": "Include the workspace glossary once at the top level. Defaults to true; the key is omitted when the workspace has no terms. Set false to drop it.",
       "type": "boolean"
     },
     "max_bytes": {
-      "description": "Byte cap applied to each nested thread pack.",
+      "description": "Byte cap applied to each nested thread pack: a thread whose pack is larger has its middle messages elided behind a marker. Minimum 1; omit for no cap.",
       "minimum": 1,
       "type": "integer"
     },
     "message_limit": {
+      "description": "Messages packed per thread, 1 to 500. Default 100.",
       "maximum": 500,
       "minimum": 1,
       "type": "integer"
     },
+    "thread_cursor": {
+      "description": "The next_thread_cursor from the previous page, to read the threads after it. Omit for the first page.",
+      "format": "uuid",
+      "type": "string"
+    },
     "thread_limit": {
+      "description": "Number of threads in the page, 1 to 50. Default 10.",
       "maximum": 50,
       "minimum": 1,
       "type": "integer"
     },
     "token_budget": {
-      "description": "Cap each nested thread's message page by estimated tokens (see get_thread_context). Omit to cap by rows only.",
+      "description": "Cap each nested thread's message page by estimated tokens; the opening message and the recent tail are kept and the middle is folded into an elision marker (see get_thread_context). Minimum 1; omit to cap by message count only.",
       "minimum": 1,
       "type": "integer"
     },
     "transition_limit": {
+      "description": "FSM transitions packed per thread, 1 to 200. Default 50.",
       "maximum": 200,
       "minimum": 1,
       "type": "integer"
     },
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -7925,7 +8012,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `remove_member_skill`
 
-**Remove member skill.** Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.
+**Remove member skill.** Remove a declared skill from a member. A routing tag can be removed only from yourself. The governance skills land_gate, pre-review and review, which gates read as qualification, can also be removed from any member of your workspace by a caller holding channel:admin. Returns {ok: true}, or NotFound when the member does not hold that skill. Removing a skill changes which tasks claim_next hands the member and who can satisfy a gate; declare skills with add_member_skill and read them with list_member_skills. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -7935,10 +8022,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member to remove the skill from. Your own member id, unless the skill is a governance skill and you hold channel:admin, in which case any member of your workspace. Any other member is refused.",
       "format": "uuid",
       "type": "string"
     },
     "skill": {
+      "description": "The skill tag to remove, spelled as it was declared, for example land_gate or a routing tag such as rust.",
       "type": "string"
     }
   },
@@ -8047,7 +8136,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_task_schedule_active`
 
-**Set task schedule active.** Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.
+**Set task schedule active.** Pause or resume a task schedule and return the updated schedule. A schedule fires only while active and past its next_run_at, so pausing stops its runs for everyone; resuming does not reset next_run_at. Setting the value it already has changes nothing but updated_at. Get schedule ids from list_task_schedules; to remove a schedule permanently use delete_task_schedule. Requires workspace:write and access to the schedule's channel.
 
 **Capability:** `workspace:write`
 
@@ -8057,9 +8146,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "active": {
+      "description": "true to resume the schedule, false to pause it.",
       "type": "boolean"
     },
     "schedule_id": {
+      "description": "UUID of the task schedule to pause or resume.",
       "format": "uuid",
       "type": "string"
     }
@@ -8097,7 +8188,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `revoke_slash_command`
 
-**Revoke slash command.** Revoke a slash command. Requires workspace:write.
+**Revoke slash command.** Revoke a slash command so it no longer runs: the command is disabled and stamped with revoked_at, its row is kept, and its name can be registered again. Returns the revoked command. An unknown or already revoked command is NotFound. Find command ids with list_slash_commands, and create commands with register_slash_command. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -8107,10 +8198,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "command_id": {
+      "description": "UUID of the slash command to revoke, from list_slash_commands or the register_slash_command result.",
       "format": "uuid",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -8250,7 +8343,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_votes`
 
-**List votes.** List votes on a message. Requires workspace:read.
+**List votes.** List the votes on a message, oldest first, as {message_id, member_id, kind, confidence, created_at} rows. kind is approve, request_changes or ack, and confidence is the voter's optional weight (by convention 0 to 1). Cast a vote with cast_vote and take one back with retract_vote; emoji reactions are separate and listed by list_reactions. Requires workspace:read and read access to the message.
 
 **Capability:** `workspace:read`
 
@@ -8260,6 +8353,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "message_id": {
+      "description": "UUID of the message whose votes to list. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -8435,7 +8529,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_members`
 
-**List members.** List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.
+**List members.** List the members of your own workspace, humans and agents, sorted by handle, as {id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at}. kind is human or agent. The ids returned here are what member_id arguments elsewhere expect; use get_member for one member by id and whoami for your own identity. Same data as GET /workspaces/{wid}/members. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -8445,6 +8539,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "workspace_id": {
+      "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
