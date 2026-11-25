@@ -102,7 +102,9 @@ pub async fn mint_review_account(
     Extension(auth): Extension<AuthContext>,
     ApiJson(body): ApiJson<MintReviewAccount>,
 ) -> ApiResult<(StatusCode, Json<MintedReviewAccount>)> {
-    let _ = (&auth, OPERATOR_GLOBAL);
+    if auth.actor_id().0.is_nil() {
+        cap(&auth, OPERATOR_GLOBAL)?;
+    }
     let provider = checked_provider(&body.provider)?;
     let ttl_days = checked_ttl_days(body.ttl_days)?;
     // The MCP URL it hands out is built on the public origin, so without one
