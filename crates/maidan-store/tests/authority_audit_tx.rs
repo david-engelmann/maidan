@@ -98,6 +98,7 @@ where
         channel_id: channel.id,
         owner_id: member.id,
         created_by: member.id,
+        created_by_token: None,
         token_hash: hash_secret(hash),
         expires_at: Utc::now() + Duration::hours(1),
         artifact_shas: Vec::new(),

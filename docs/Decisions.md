@@ -2457,3 +2457,15 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** A ticket scoped to a single conversation would be a new feature with its own rule for who may mint it, not a loosening of this one.
 
 **Record.** The `478.0.0` section of [CHANGELOG](../CHANGELOG.md), `listings/validation/v478.md` ("Probes on the released binary").
+
+### The launch gate is passed (2026-11-25)
+
+**Decision.** The `maidan-launch-1.0` gate is passed on `v478.0.0`. The command's run on maidan.world stands (75 passed, 0 failed, 0 skipped on 2026-11-24), and the three legs it leaves to a person are accepted as covered by CI. The maintainer decided it.
+
+**Alternative.** Run the three legs by hand on maidan.world first.
+
+**Why.** Each of the three is exercised in CI on every change, the OAuth consent was recorded on maidan.world on 2026-11-09, and the command had passed on four releases in a row with the same result as its Postgres rehearsal.
+
+**To revisit.** A release that changes sign-in, consent or the console's approval path gets the three legs run by hand before it is called a launch release.
+
+**Record.** `docs/Gates/maidan-launch-1.0.md`, `listings/validation/v478.md`, and Open Work's "Recently decided".

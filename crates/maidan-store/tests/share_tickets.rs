@@ -3,7 +3,7 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ArtifactKind, ChannelMemberRole, MemberKind, NewArtifact, NewChannel, NewMember,
+    ArtifactKind, ChannelMemberRole, MemberKind, NewApiToken, NewArtifact, NewChannel, NewMember,
     NewShareTicket, NewWorkspace,
 };
 
@@ -20,7 +20,89 @@ async fn sqlite() -> SqliteStore {
     SqliteStore::for_tests(pool)
 }
 
+/// The token a ticket was minted with is stored and read back by every path
+/// that returns a ticket, so each use can resolve it again.
+async fn a_ticket_records_the_token_that_minted_it(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "token-bearing".into(),
+        })
+        .await
+        .expect("workspace");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "minter".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "open".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let token = store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: "c".repeat(64),
+            label: None,
+            capabilities: vec!["token:admin".into()],
+            expires_at: None,
+        })
+        .await
+        .expect("token");
+    let now = Utc::now();
+    let mint = |created_by_token, hash: &str| NewShareTicket {
+        workspace_id: ws.id,
+        channel_id: channel.id,
+        owner_id: member.id,
+        created_by: member.id,
+        created_by_token,
+        token_hash: hash.repeat(64),
+        expires_at: now + ChronoDuration::hours(1),
+        artifact_shas: Vec::new(),
+    };
+    let with_token = store
+        .create_share_ticket(mint(Some(token.id), "d"))
+        .await
+        .expect("ticket with a token");
+    let without_token = store
+        .create_share_ticket(mint(None, "e"))
+        .await
+        .expect("ticket without a token");
+    assert_eq!(with_token.created_by_token, Some(token.id));
+    assert_eq!(without_token.created_by_token, None);
+    for (hash, expected) in [("d", Some(token.id)), ("e", None)] {
+        let resolved = store
+            .resolve_share_ticket(&hash.repeat(64), now)
+            .await
+            .expect("resolve");
+        assert_eq!(resolved.created_by_token, expected);
+    }
+    assert_eq!(
+        store
+            .get_share_ticket(with_token.id)
+            .await
+            .expect("get")
+            .created_by_token,
+        Some(token.id)
+    );
+    let listed = store.list_share_tickets(ws.id).await.expect("list");
+    assert!(listed
+        .iter()
+        .any(|ticket| ticket.id == with_token.id && ticket.created_by_token == Some(token.id)));
+}
+
 async fn run_suite(store: &dyn Store) {
+    a_ticket_records_the_token_that_minted_it(store).await;
     let ws = store
         .create_workspace(NewWorkspace {
             name: "incident owner".into(),
@@ -107,6 +189,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             owner_id: owner.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: token_hash.clone(),
             expires_at: now + ChronoDuration::hours(47),
             artifact_shas: vec![allowed_sha.clone(), allowed_sha.clone()],
@@ -161,6 +244,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             owner_id: owner.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: "b".repeat(64),
             expires_at: now + ChronoDuration::hours(1),
             artifact_shas: vec![other_workspace_sha],
@@ -183,6 +267,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: other_channel.id,
             owner_id: owner.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: "c".repeat(64),
             expires_at: now + ChronoDuration::hours(1),
             artifact_shas: Vec::new(),
@@ -195,6 +280,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             owner_id: other_member.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: "d".repeat(64),
             expires_at: now + ChronoDuration::hours(1),
             artifact_shas: Vec::new(),
@@ -207,6 +293,7 @@ async fn run_suite(store: &dyn Store) {
             channel_id: channel.id,
             owner_id: owner.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: "e".repeat(64),
             expires_at: now + ChronoDuration::hours(49),
             artifact_shas: Vec::new(),
@@ -289,6 +376,7 @@ async fn a_ticket_is_valid_until_the_instant_it_expires(store: &dyn Store) {
             channel_id: channel.id,
             owner_id: owner.id,
             created_by: owner.id,
+            created_by_token: None,
             token_hash: token_hash.clone(),
             expires_at,
             artifact_shas: Vec::new(),
@@ -381,6 +469,7 @@ async fn a_ticket_cannot_open_the_dm_channel_or_a_private_channel_its_creator_is
         channel_id,
         owner_id: created_by,
         created_by,
+        created_by_token: None,
         token_hash: hash.repeat(64),
         expires_at: Utc::now() + ChronoDuration::hours(1),
         artifact_shas: Vec::new(),

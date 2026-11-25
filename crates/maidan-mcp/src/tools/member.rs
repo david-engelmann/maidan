@@ -7,7 +7,7 @@ use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use futures::StreamExt;
-use maidan_auth::AuthContext;
+use maidan_auth::{AuthContext, EventVisibility};
 use maidan_bus::BusItem;
 use maidan_store::Store;
 use maidan_types::*;
@@ -90,9 +90,10 @@ struct WaitForMentionArgs {
 
 /// Block until `member_id` is next @mentioned, or the timeout lapses.
 /// Subscribes to the event bus filtered to this member's `MentionRecorded`
-/// events and returns the first one whose thread the caller can access; returns
-/// `null` on timeout. This is a **live** primitive — it only sees mentions
-/// recorded *after* the call subscribes, so drain existing ones with
+/// events and returns the first one the caller may read (see
+/// [`wait_for_member_event`]); returns `null` on timeout. This is a **live**
+/// primitive — it only sees mentions recorded *after* the call subscribes, so
+/// drain existing ones with
 /// `get_inbox`/`list_mentions` first (the `GET /mcp/stream` SSE transport is
 /// the at-least-once, resumable alternative when a missed mention is
 /// unacceptable).
@@ -115,9 +116,13 @@ pub(super) async fn wait_for_mention(
 
 /// Shared member-addressed long-poll: block until an event of one of `kinds`
 /// addressed to `member_id` arrives, or the timeout lapses. Returns the
-/// triggering event (unless it lives in a thread the caller can't access — then
-/// keep waiting), or `null` on timeout. Backs `wait_for_mention` and
-/// `wait_for_notification`. **Live** — only sees events after subscribe.
+/// triggering event, or `null` on timeout. An event the caller may not read
+/// (another workspace's, a private channel it is not in, the shared DM channel,
+/// a thread it cannot open) is skipped, not revealed, on the live and the
+/// lookback path alike, by the one rule the live streams apply
+/// ([`EventVisibility`]). Being the member an event is addressed to lends no
+/// access to where it happened. Backs `wait_for_mention`. **Live**: only sees
+/// events after subscribe.
 async fn wait_for_member_event(
     server: &crate::server::McpServer,
     auth: &AuthContext,
@@ -148,6 +153,7 @@ async fn wait_for_member_event(
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+    let mut visible = EventVisibility::new(store, auth);
     // Where a replay after a lag starts (see `thread::next_visible_event`).
     let mut cursor = match since_log_id {
         Some(since) => since,
@@ -155,7 +161,8 @@ async fn wait_for_member_event(
     };
 
     if let Some(since) = since_log_id
-        && let Some(event) = lookback_member_event(store, auth, member_id, &kinds, since).await?
+        && let Some(event) =
+            lookback_member_event(store, &mut visible, auth, member_id, &kinds, since).await?
     {
         return Ok(content_json(&event));
     }
@@ -173,7 +180,8 @@ async fn wait_for_member_event(
             // from the log, then keep waiting on the same deadline.
             BusItem::Lagged { .. } => {
                 if let Some(event) =
-                    lookback_member_event(store, auth, member_id, &kinds, cursor).await?
+                    lookback_member_event(store, &mut visible, auth, member_id, &kinds, cursor)
+                        .await?
                 {
                     return Ok(content_json(&event));
                 }
@@ -181,11 +189,10 @@ async fn wait_for_member_event(
             }
         };
         cursor = cursor.max(envelope.log_id);
-        // Addressed to this member, but if it lives in a thread the caller can't
-        // access, don't reveal it — keep waiting.
-        if let Some(tid) = envelope.event.thread_id()
-            && !maidan_auth::can_access_thread(store, auth, tid).await?
-        {
+        // Addressed to this member, but not necessarily readable by it: an
+        // event that names a channel and no thread (an approval gate on a
+        // channel) is held to that channel's membership.
+        if !visible.allows_event(&envelope.event).await? {
             continue;
         }
         return Ok(content_json(&envelope.event));
@@ -194,11 +201,13 @@ async fn wait_for_member_event(
 
 /// Replay the durable event log for the earliest event of one of `kinds`
 /// addressed to `member_id` with `log_id > since`. Returns the deserialized
-/// `Event`, RBAC-filtered like the live path (a match in a thread the caller
-/// can't access is skipped, not revealed), or `None` if the log has no such
-/// event. Scoped to `auth.workspace_id` — member-addressed events live there.
+/// `Event`, filtered by the same [`EventVisibility`] as the live path (a match
+/// the caller may not read is skipped, not revealed), or `None` if the log has
+/// no such event. Scoped to `auth.workspace_id`: member-addressed events live
+/// there.
 async fn lookback_member_event(
     store: &dyn Store,
+    visible: &mut EventVisibility<'_>,
     auth: &AuthContext,
     member_id: MemberId,
     kinds: &HashSet<EventKind>,
@@ -221,9 +230,7 @@ async fn lookback_member_event(
             if event.member_id() != Some(member_id) {
                 continue;
             }
-            if let Some(tid) = event.thread_id()
-                && !maidan_auth::can_access_thread(store, auth, tid).await?
-            {
+            if !visible.allows_event(&event).await? {
                 continue;
             }
             return Ok(Some(event));
@@ -260,9 +267,13 @@ struct NotificationLine {
     reason: Option<String>,
 }
 
-/// Thread titles and access, read once per thread for a whole listing.
+/// Thread titles and access, and channel access, read once each for a whole
+/// listing.
 #[derive(Default)]
-struct ThreadCache(std::collections::HashMap<ThreadId, Option<Option<String>>>);
+struct ThreadCache {
+    titles: std::collections::HashMap<ThreadId, Option<Option<String>>>,
+    channels: std::collections::HashMap<ChannelId, bool>,
+}
 
 impl ThreadCache {
     /// `None` when the caller cannot read the thread; otherwise its title.
@@ -272,7 +283,7 @@ impl ThreadCache {
         auth: &AuthContext,
         thread_id: ThreadId,
     ) -> Result<Option<Option<String>>, McpError> {
-        if let Some(cached) = self.0.get(&thread_id) {
+        if let Some(cached) = self.titles.get(&thread_id) {
             return Ok(cached.clone());
         }
         let readable = maidan_auth::can_access_thread(store, auth, thread_id).await?;
@@ -281,8 +292,27 @@ impl ThreadCache {
         } else {
             None
         };
-        self.0.insert(thread_id, title.clone());
+        self.titles.insert(thread_id, title.clone());
         Ok(title)
+    }
+
+    /// Whether the caller may read what happened in a channel that no thread
+    /// names: a private channel it is not in, or the shared DM channel, is not
+    /// readable.
+    async fn channel_readable(
+        &mut self,
+        store: &dyn Store,
+        auth: &AuthContext,
+        channel_id: ChannelId,
+    ) -> Result<bool, McpError> {
+        if let Some(&cached) = self.channels.get(&channel_id) {
+            return Ok(cached);
+        }
+        let readable = EventVisibility::new(store, auth)
+            .allows_in(None, Some(channel_id))
+            .await?;
+        self.channels.insert(channel_id, readable);
+        Ok(readable)
     }
 }
 
@@ -306,6 +336,16 @@ async fn notification_line(
                 });
             }
         }
+    } else if let Some(channel_id) = notification.channel_id
+        && !threads.channel_readable(store, auth, channel_id).await?
+    {
+        // A channel-only row follows the channel's membership the way a
+        // thread's follows the thread's.
+        return Ok(NotificationLine {
+            notification,
+            title: None,
+            reason: None,
+        });
     }
     let mut reason = None;
     if let Ok(stored) = store.get_stored_event(notification.source_log_id).await
@@ -413,7 +453,8 @@ fn attention_reason(event: &Event) -> Option<String> {
 }
 
 /// The oldest unread notification `member_id` got for an event after
-/// `after`, skipping one in a thread the caller can no longer read.
+/// `after`, skipping one in a thread or channel the caller can no longer read
+/// (the rule the live streams apply to the event itself).
 async fn next_unread_notification(
     store: &dyn Store,
     auth: &AuthContext,
@@ -425,10 +466,9 @@ async fn next_unread_notification(
         .await?;
     rows.retain(|n| n.source_log_id > after);
     rows.sort_by_key(|n| n.source_log_id);
+    let mut visible = EventVisibility::new(store, auth);
     for row in rows {
-        if let Some(thread_id) = row.thread_id
-            && !maidan_auth::can_access_thread(store, auth, thread_id).await?
-        {
+        if !visible.allows_in(row.thread_id, row.channel_id).await? {
             continue;
         }
         return Ok(Some(row));
@@ -490,9 +530,18 @@ pub(super) async fn get_waiting_inbox(
     let member_id = MemberId(a.member_id);
     let member = store.get_member(member_id).await?;
     let sla = a.sla_secs.filter(|&s| s > 0).unwrap_or(86_400);
-    let assigned = store
+    // Being assigned a thread does not keep a private channel open to a member
+    // who has left it: list only the threads the caller can open, as
+    // `list_assigned_threads` does.
+    let mut assigned = Vec::new();
+    for thread in store
         .list_assigned_threads(member.workspace_id, member_id)
-        .await?;
+        .await?
+    {
+        if maidan_auth::can_access_thread(store.as_ref(), auth, thread.id).await? {
+            assigned.push(thread);
+        }
+    }
     // Being named a reviewer does not grant access to a private channel: list
     // only the requests the caller can open (and so can act on).
     let mut reviews = Vec::new();
@@ -1083,4 +1132,338 @@ pub(super) async fn mark_all_notifications_read(
         .mark_all_notifications_read(MemberId(a.member_id))
         .await? as i64;
     Ok(content_json(&serde_json::json!({ "cleared": cleared })))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use maidan_artifacts::LocalFsStore;
+    use maidan_auth::capability::WORKSPACE_READ;
+    use maidan_bus::InMemoryBus;
+    use maidan_search::HashV1Provider;
+    use maidan_store::{prelude::*, run_sqlite_migrations};
+    use serde_json::json;
+
+    use super::*;
+    use crate::server::McpServer;
+
+    /// A workspace with a public channel, a private one only `insider` is in,
+    /// and the shared DM channel `insider` and `peer` talk in. `outsider` is
+    /// in the workspace and in none of them.
+    struct Rig {
+        server: McpServer,
+        workspace: WorkspaceId,
+        insider: MemberId,
+        outsider: MemberId,
+        public: ChannelId,
+        private: ChannelId,
+        dm_channel: ChannelId,
+    }
+
+    async fn rig() -> Rig {
+        let pool = maidan_search::sqlite_pool_options()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let workspace = store
+            .create_workspace(NewWorkspace {
+                name: "waits".into(),
+            })
+            .await
+            .unwrap()
+            .id;
+        let mut members = Vec::new();
+        for handle in ["insider", "outsider", "peer"] {
+            members.push(
+                store
+                    .create_member(NewMember {
+                        workspace_id: workspace,
+                        handle: handle.into(),
+                        display_name: None,
+                        kind: MemberKind::Human,
+                    })
+                    .await
+                    .unwrap()
+                    .id,
+            );
+        }
+        let channel = |name: &str, private| {
+            let store = store.clone();
+            let name = name.to_string();
+            async move {
+                store
+                    .create_channel(NewChannel {
+                        workspace_id: workspace,
+                        name,
+                        topic: None,
+                        private,
+                    })
+                    .await
+                    .unwrap()
+                    .id
+            }
+        };
+        let public = channel("open", false).await;
+        let private = channel("secret", true).await;
+        store
+            .add_channel_member(private, members[0], ChannelMemberRole::Member)
+            .await
+            .unwrap();
+        let dm = store
+            .open_dm_conversation(workspace, members[0], members[2])
+            .await
+            .unwrap();
+        let dm_channel = store.get_thread(dm.thread_id).await.unwrap().channel_id;
+        let server = McpServer::new(
+            store,
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        Rig {
+            server,
+            workspace,
+            insider: members[0],
+            outsider: members[1],
+            public,
+            private,
+            dm_channel,
+        }
+    }
+
+    impl Rig {
+        /// An approval request addressed to `member` that names a channel and
+        /// no thread: the kind of event the thread check alone let through.
+        fn channel_only(&self, member: MemberId, channel_id: ChannelId) -> Event {
+            Event::ApprovalRequested {
+                occurred_at: chrono::Utc::now(),
+                workspace_id: self.workspace,
+                channel_id: Some(channel_id),
+                thread_id: None,
+                gate_id: ApprovalGateId(uuid::Uuid::now_v7()),
+                requested_by: member,
+            }
+        }
+
+        /// What `member` is handed by waiting for its own approval requests:
+        /// the event, or `None` on timeout. With `after`, it replays the log
+        /// from there first; without, it waits for `publish` to land live.
+        async fn waits(
+            &self,
+            member: MemberId,
+            after: Option<i64>,
+            publish: Option<Event>,
+        ) -> Option<Value> {
+            let auth =
+                AuthContext::from_session(member, self.workspace, vec![WORKSPACE_READ.into()]);
+            let wait = wait_for_member_event(
+                &self.server,
+                &auth,
+                member,
+                HashSet::from([EventKind::ApprovalRequested]),
+                Some(500),
+                after,
+            );
+            let (answer, _) = tokio::join!(wait, async {
+                if let Some(event) = publish {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    // A refused append would make every "nothing arrived"
+                    // below true for the wrong reason.
+                    assert!(
+                        self.server.publish_event(event).await.is_some(),
+                        "the event was not appended"
+                    );
+                }
+            });
+            let answer = answer.unwrap();
+            let body: Value =
+                serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
+            (!body.is_null()).then_some(body)
+        }
+
+        /// `waits` on an event already in the log: published first, then
+        /// replayed from just before it.
+        async fn replays(&self, member: MemberId, event: Event) -> Option<Value> {
+            let log_id = self.server.publish_event(event).await.unwrap();
+            self.waits(member, Some(log_id - 1), None).await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_member_outside_a_private_channel_waits_through_its_channel_only_events() {
+        let rig = rig().await;
+        let hidden = rig.channel_only(rig.outsider, rig.private);
+        assert!(
+            rig.waits(rig.outsider, None, Some(hidden.clone()))
+                .await
+                .is_none(),
+            "a live channel-only event from a private channel the member is not in"
+        );
+        assert!(
+            rig.replays(rig.outsider, hidden).await.is_none(),
+            "the same event on the lookback path"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_member_in_a_private_channel_is_woken_by_its_channel_only_events() {
+        let rig = rig().await;
+        let shown = rig.channel_only(rig.insider, rig.private);
+        let live = rig
+            .waits(rig.insider, None, Some(shown.clone()))
+            .await
+            .expect("live");
+        assert_eq!(live["kind"], json!("approval_requested"));
+        assert_eq!(live["channel_id"], json!(rig.private.0));
+        assert!(rig.replays(rig.insider, shown).await.is_some());
+
+        // A public channel is open to the whole workspace.
+        let open = rig.channel_only(rig.outsider, rig.public);
+        assert!(rig
+            .waits(rig.outsider, None, Some(open.clone()))
+            .await
+            .is_some());
+        assert!(rig.replays(rig.outsider, open).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn the_shared_dm_channels_channel_only_events_reach_nobody_waiting() {
+        let rig = rig().await;
+        // The outsider is no participant. The insider is one, but DM access is
+        // per conversation and a channel-only event names none, so it is
+        // shown to no one.
+        for member in [rig.outsider, rig.insider] {
+            let event = rig.channel_only(member, rig.dm_channel);
+            assert!(
+                rig.waits(member, None, Some(event.clone())).await.is_none(),
+                "live"
+            );
+            assert!(rig.replays(member, event).await.is_none(), "lookback");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_event_from_another_workspace_is_never_handed_to_a_waiter() {
+        let rig = rig().await;
+        let other = rig
+            .server
+            .store
+            .create_workspace(NewWorkspace {
+                name: "elsewhere".into(),
+            })
+            .await
+            .unwrap();
+        let mut elsewhere = rig.channel_only(rig.outsider, rig.public);
+        if let Event::ApprovalRequested { workspace_id, .. } = &mut elsewhere {
+            *workspace_id = other.id;
+        }
+        assert!(rig
+            .waits(rig.outsider, None, Some(elsewhere))
+            .await
+            .is_none());
+    }
+
+    /// The store already hides a notification from the member it belongs to
+    /// once they leave the channel (it filters by the same rule on every
+    /// read), so a row it returns is always readable by its recipient. These
+    /// two tests therefore read the row of a member who IS in the channel
+    /// with the `auth` of one who is not: the store's filter lets the row
+    /// through, and only the caller-side check in `next_unread_notification`
+    /// and `notification_line` can still refuse it.
+    async fn insiders_channel_only_row(rig: &Rig) -> NewNotification {
+        let source = rig
+            .server
+            .publish_event(rig.channel_only(rig.insider, rig.private))
+            .await
+            .unwrap();
+        NewNotification {
+            workspace_id: rig.workspace,
+            member_id: rig.insider,
+            kind: EventKind::ApprovalRequested,
+            source_log_id: source,
+            channel_id: Some(rig.private),
+            thread_id: None,
+            message_id: None,
+            actor_id: None,
+        }
+    }
+
+    fn session(rig: &Rig, member: MemberId) -> AuthContext {
+        AuthContext::from_session(member, rig.workspace, vec![WORKSPACE_READ.into()])
+    }
+
+    #[tokio::test]
+    async fn a_channel_only_notification_is_not_waited_on_by_a_caller_outside_its_channel() {
+        let rig = rig().await;
+        let store = rig.server.store.as_ref();
+        store
+            .create_notification(insiders_channel_only_row(&rig).await)
+            .await
+            .unwrap();
+        // Without the channel check the first call returns the row: the store
+        // filter passes it (it is the insider's own) and there is no thread
+        // for the old thread check to refuse.
+        assert!(
+            next_unread_notification(store, &session(&rig, rig.outsider), rig.insider, 0)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            next_unread_notification(store, &session(&rig, rig.insider), rig.insider, 0)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_channel_only_notification_row_carries_its_reason_only_for_a_caller_in_the_channel() {
+        let rig = rig().await;
+        store_row(&rig).await;
+        // The reason is withheld from a caller who cannot read the channel. A
+        // row on no thread has no title of its own, so the reason is the
+        // digest that could leak. Without the channel branch in
+        // `notification_line`, the outsider's call reads the stored event and
+        // returns "approval requested".
+        let outside = digest(&rig, session(&rig, rig.outsider)).await;
+        assert!(
+            outside.get("reason").is_none() && outside.get("title").is_none(),
+            "{outside}"
+        );
+        let inside = digest(&rig, session(&rig, rig.insider)).await;
+        assert_eq!(inside["reason"], json!("approval requested"), "{inside}");
+    }
+
+    /// The insider's notifications as `auth` lists them: the one row.
+    async fn digest(rig: &Rig, auth: AuthContext) -> Value {
+        let listed = list_notifications(
+            &rig.server.store,
+            &auth,
+            &json!({ "member_id": rig.insider.0 }),
+        )
+        .await
+        .unwrap();
+        let rows: Value =
+            serde_json::from_str(listed["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), 1, "{rows}");
+        rows[0].clone()
+    }
+
+    async fn store_row(rig: &Rig) {
+        rig.server
+            .store
+            .create_notification(insiders_channel_only_row(rig).await)
+            .await
+            .unwrap();
+    }
 }

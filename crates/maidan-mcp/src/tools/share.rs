@@ -42,6 +42,7 @@ pub(super) async fn create_share_ticket(
                 channel_id: ChannelId(a.channel_id),
                 owner_id: auth.member_id(),
                 created_by: auth.member_id(),
+                created_by_token: auth.token_id(),
                 token_hash: hash_secret(secret.as_str()),
                 expires_at: a.expires_at,
                 artifact_shas: a.artifact_shas,
