@@ -294,6 +294,54 @@ call no Maidan tool (the weather, writing code, a translation).
 all nine through `<command>`, which the operator points at ChatGPT connected
 to `/mcp/coordinator`; the script only runs it and reads the tools it names.
 
+## The Copilot CLI package
+
+The root `plugin.json`, `skills/` and `.github/plugin/marketplace.json` are the
+GitHub Copilot CLI package (Open Work Next 10), in the Agent Plugins 1.0 shape.
+GitHub's plugin marketplaces have no review step. The marketplace file in a
+repository is the listing, so the package is live in the repository the moment
+the file is on the branch Copilot CLI reads. Its validation record is
+`listings/validation/copilot-plugin.md`.
+
+**What a user types.**
+
+```sh
+copilot plugin marketplace add david-engelmann/maidan
+copilot plugin install maidan@maidan-plugins
+copilot mcp add --transport http maidan https://YOUR-INSTANCE/mcp/streamable \
+  --header "Authorization: Bearer $MAIDAN_TOKEN"
+```
+
+The first command registers the marketplace, which takes its name,
+`maidan-plugins`, from `marketplace.json`. The second installs the `maidan`
+plugin, which carries the worker skill (`maidan-claimant`) and the reviewer
+skill (`maidan-reviewer`). The third connects the user's own instance. It
+points at `/mcp/streamable`, the full catalog, because the skills name tools
+the narrower profile endpoints do not serve (the claimant's evidence and
+artifact upload tools, and the reviewer's land gate, references and seat pull).
+A seat that runs only the core worker loop can use `/mcp/worker`. The bundled
+reviewer skill needs the full endpoint.
+
+**Identity and auth.** The plugin carries no MCP server and no token, because
+Agent Plugins 1.0 passes remote server config literally, with no variable
+expansion. The user adds the server with `copilot mcp add` and a token minted
+for that seat, never `token:admin`. The worker profile claims, does and hands
+back tasks and has no review verdict or approval decision tool. The reviewer
+profile reviews work and has no claim tools.
+
+**The skills are copies.** `skills/maidan-claimant` and `skills/maidan-reviewer`
+are byte for byte the skills under `examples/claude-code/`, and
+`copilot_plugin_manifest` fails when they differ. Edit the example, then copy
+it over.
+
+**Trust model.** Provider-rendered approval UI is untrusted display, the Maidan
+console is the trust root, and an approval whose evidence the human did not see
+in the console is provisional.
+
+**Terms.** The plugin is free and MIT-licensed, and connects to an instance the
+user runs. The listing links the same privacy policy, terms, support contact
+and data statement as every other listing here.
+
 ## The Cursor package
 
 `.cursor-plugin/plugin.json` at the repository root is the Cursor Plugin

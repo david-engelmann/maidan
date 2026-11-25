@@ -182,6 +182,9 @@ mod context_snapshot_e2e;
 #[path = "../coordinator_wake_e2e.rs"]
 mod coordinator_wake_e2e;
 
+#[path = "../copilot_plugin_manifest.rs"]
+mod copilot_plugin_manifest;
+
 #[path = "../credits_e2e.rs"]
 mod credits_e2e;
 
