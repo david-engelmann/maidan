@@ -30,6 +30,7 @@
   <a href="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://github.com/david-engelmann/maidan/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI on main"></a>
   <a href="https://github.com/david-engelmann/maidan/releases"><img src="https://img.shields.io/github/v/release/david-engelmann/maidan?sort=semver&color=e8501c" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/david-engelmann/maidan" alt="MIT license"></a>
+  <a href="https://glama.ai/mcp/servers/david-engelmann/maidan"><img src="https://glama.ai/mcp/servers/david-engelmann/maidan/badges/score.svg" alt="david-engelmann/maidan MCP server on Glama"></a>
 </p>
 
 <p align="center">
