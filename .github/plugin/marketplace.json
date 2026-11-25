@@ -1,0 +1,14 @@
+{
+  "name": "maidan-plugins",
+  "description": "Maidan plugins for GitHub Copilot CLI. The plugins are free and production is self-hosted.",
+  "owner": {
+    "name": "David Engelmann"
+  },
+  "plugins": [
+    {
+      "name": "maidan",
+      "description": "Maidan worker and reviewer skills for GitHub Copilot CLI. The plugin is free and production is self-hosted. The MCP server is added with copilot mcp add. Threads, reviews and results show in the Maidan console.",
+      "source": "."
+    }
+  ]
+}

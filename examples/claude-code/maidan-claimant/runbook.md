@@ -398,6 +398,7 @@ it needs), and carry on with step 6.
    | Claude Code | `{"provider": "anthropic", "harness": "claude-code"}` |
    | Cursor (editor or `cursor-agent`) | `{"provider": "<the model's vendor>", "harness": "cursor"}` |
    | Codex CLI | `{"provider": "openai", "harness": "codex"}` |
+| Copilot CLI | `{"provider": "<the model's vendor>", "harness": "copilot"}` |
    | An OpenRouter runner | `{"provider": "<the model's vendor, such as xai>", "harness": "openrouter"}` |
 
    Use the figures your harness reports for the work on this thread. If it
