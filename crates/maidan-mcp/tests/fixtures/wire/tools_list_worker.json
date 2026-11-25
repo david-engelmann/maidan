@@ -427,10 +427,11 @@
         "readOnlyHint": true,
         "title": "Get thread status"
       },
-      "description": "The thread's active agent status declaration, or null when cleared. Requires workspace:read.",
+      "description": "Read the agent status declaration currently active on a thread: status (working, needs_input, needs_review, blocked or done), a one-line note, declared_by and declared_at. Returns null when none is active; a declaration is cleared by a human reply, by a newer declaration, or when the declarer's claim ends. This is what the agent says it is doing, not the thread's workflow state. The holder sets it with declare_status. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "thread_id": {
+            "description": "UUID of the thread whose status declaration to read.",
             "format": "uuid",
             "type": "string"
           }
@@ -505,7 +506,7 @@
         "readOnlyHint": false,
         "title": "Post message"
       },
-      "description": "Post a message to a thread as the authenticated member.",
+      "description": "Post a message to a thread as the authenticated member and return the stored message (id, thread_id, author_id, body, metadata, content, posted_at). Send body for plain text or content for typed blocks; when body is empty it is derived from the blocks, and sending neither is refused. A closed thread still takes messages, while a deleted or archived thread refuses them. The post appends a MessagePosted event, records each @handle mention and publishes a mention event for it, and runs the registered slash command when the body begins with /name (see register_slash_command). For a DM conversation id use post_dm_message. Requires message:post.",
       "inputSchema": {
         "anyOf": [
           {
@@ -521,11 +522,11 @@
         ],
         "properties": {
           "body": {
-            "description": "plain text; omit when sending typed content (body is derived from it)",
+            "description": "Plain-text message text, which is what search indexes. Omit it or send an empty string when you pass content. At least one of body or content is required.",
             "type": "string"
           },
           "content": {
-            "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+            "description": "Typed content blocks in order. Each block has a type: text {text}, code {code, language}, tool_use {id, name, input}, tool_result {tool_use_id, content, is_error}, or resource_link {uri, mime_type, title}. When body is empty, body is built from the blocks; tool_use blocks add no text.",
             "items": {
               "properties": {
                 "type": {
@@ -547,9 +548,11 @@
             "type": "array"
           },
           "metadata": {
+            "description": "Free-form JSON object stored with the message and returned with it, for example {\"artifacts\": [\"<sha256>\"]} to name artifacts the message refers to. Defaults to an empty object.",
             "type": "object"
           },
           "thread_id": {
+            "description": "UUID of the thread to post in. You must be able to read it; a thread in a private channel or DM you are not part of is refused.",
             "format": "uuid",
             "type": "string"
           }
@@ -670,17 +673,18 @@
         "readOnlyHint": false,
         "title": "Report usage"
       },
-      "description": "Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.",
+      "description": "Record one retry-safe usage heartbeat for the claim you hold on a thread: token counts, the USD charge and the prices behind it. Maidan takes the reporter from your credential and the payer from the thread's workspace, and refuses the call unless you are the active holder of claim_lease_id. usd_micros must equal the charge computed from price_snapshot and tokens. Repeating an identical report returns the first outcome without charging twice; reusing the usage_report_id with different content is a conflict. If the thread's budget (tokens, USD, turns or wall time) is now exceeded, the run stops: the claim is released, a ClaimFailed event is appended and a dead-letter entry is recorded (see list_dlq). Returns the ledger entry with the updated budget, stopped and reason. Requires thread:transition.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "claim_lease_id": {
-            "description": "active claim fencing token",
+            "description": "The fencing token of your active claim, from the claim response's thread.claim_lease_id. A stale or foreign token is refused.",
             "format": "uuid",
             "type": "string"
           },
           "evidence": {
             "additionalProperties": false,
+            "description": "Optional context about the call: provider, service_tier, batch, harness, harness_version, effort, cache_key, cache_miss_reason, pack_sha256 (up to 32 SHA-256 hex digests of Maidan packs the call used) and standard_price. standard_price is allowed only for a cheaper-lane call (batch true, or service_tier batch or flex) and must price the same tokens at or above usd_micros.",
             "properties": {
               "batch": {
                 "type": "boolean"
@@ -760,12 +764,14 @@
             "type": "object"
           },
           "model": {
+            "description": "Model id the provider's response named, 1 to 255 characters after trimming.",
             "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
           "price_snapshot": {
             "additionalProperties": false,
+            "description": "Rates used for this call in micro-USD per million tokens: input_usd_micros_per_million, output_usd_micros_per_million, cache_read_usd_micros_per_million, cache_write_5m_usd_micros_per_million and cache_write_1h_usd_micros_per_million, all required non-negative integers. Maidan stores them as reporter-supplied evidence and keeps no rate card.",
             "properties": {
               "cache_read_usd_micros_per_million": {
                 "minimum": 0,
@@ -798,11 +804,13 @@
             "type": "object"
           },
           "thread_id": {
+            "description": "UUID of the thread you hold a claim on.",
             "format": "uuid",
             "type": "string"
           },
           "tokens": {
             "additionalProperties": false,
+            "description": "Token counts for this call as {input, output, cache_read, cache_write_5m, cache_write_1h}, all required non-negative integers. input is uncached input only. A token budget counts input, output and both cache-write tiers; cache reads are priced into the charge but do not count toward a token budget.",
             "properties": {
               "cache_read": {
                 "description": "cached input; not part of a token budget",
@@ -837,15 +845,16 @@
           },
           "turns": {
             "default": 0,
+            "description": "Model turns this report adds to the thread's turn count, a non-negative integer. Default 0.",
             "type": "integer"
           },
           "usage_report_id": {
-            "description": "globally unique idempotency key",
+            "description": "UUID you generate for this report, unique across all reports. Reuse it only to retry the exact same report.",
             "format": "uuid",
             "type": "string"
           },
           "usd_micros": {
-            "description": "validated USD charge in micros ($1 = 1000000)",
+            "description": "Charge for this call in micro-USD ($1 = 1000000), a non-negative integer. Must equal the sum over the five token kinds of count times rate per million, rounded up to a whole micro-dollar; a mismatch is refused.",
             "minimum": 0,
             "type": "integer"
           }

@@ -623,10 +623,11 @@
         "readOnlyHint": true,
         "title": "Get thread status"
       },
-      "description": "The thread's active agent status declaration, or null when cleared. Requires workspace:read.",
+      "description": "Read the agent status declaration currently active on a thread: status (working, needs_input, needs_review, blocked or done), a one-line note, declared_by and declared_at. Returns null when none is active; a declaration is cleared by a human reply, by a newer declaration, or when the declarer's claim ends. This is what the agent says it is doing, not the thread's workflow state. The holder sets it with declare_status. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "thread_id": {
+            "description": "UUID of the thread whose status declaration to read.",
             "format": "uuid",
             "type": "string"
           }
@@ -696,40 +697,49 @@
         "readOnlyHint": true,
         "title": "Get workspace context"
       },
-      "description": "Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).",
+      "description": "Pack a workspace for one prompt: the workspace record, the channels you can see (public ones, and private ones you belong to) sorted by name, a page of live threads (oldest first, only ones you can read) each with its messages, references and FSM transitions, and the glossary once at the top level. thread_limit sets the page size (default 10, max 50), and next_thread_cursor, when present, is passed back as thread_cursor for the next page. Use get_thread_context for a single thread with edits and replay options, and list_threads or find_threads to locate threads without packing them. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "include_glossary": {
             "default": true,
-            "description": "Include the workspace glossary once at the top level (grounding); omitted when empty. Set false to drop it.",
+            "description": "Include the workspace glossary once at the top level. Defaults to true; the key is omitted when the workspace has no terms. Set false to drop it.",
             "type": "boolean"
           },
           "max_bytes": {
-            "description": "Byte cap applied to each nested thread pack.",
+            "description": "Byte cap applied to each nested thread pack: a thread whose pack is larger has its middle messages elided behind a marker. Minimum 1; omit for no cap.",
             "minimum": 1,
             "type": "integer"
           },
           "message_limit": {
+            "description": "Messages packed per thread, 1 to 500. Default 100.",
             "maximum": 500,
             "minimum": 1,
             "type": "integer"
           },
+          "thread_cursor": {
+            "description": "The next_thread_cursor from the previous page, to read the threads after it. Omit for the first page.",
+            "format": "uuid",
+            "type": "string"
+          },
           "thread_limit": {
+            "description": "Number of threads in the page, 1 to 50. Default 10.",
             "maximum": 50,
             "minimum": 1,
             "type": "integer"
           },
           "token_budget": {
-            "description": "Cap each nested thread's message page by estimated tokens (see get_thread_context). Omit to cap by rows only.",
+            "description": "Cap each nested thread's message page by estimated tokens; the opening message and the recent tail are kept and the middle is folded into an elision marker (see get_thread_context). Minimum 1; omit to cap by message count only.",
             "minimum": 1,
             "type": "integer"
           },
           "transition_limit": {
+            "description": "FSM transitions packed per thread, 1 to 200. Default 50.",
             "maximum": 200,
             "minimum": 1,
             "type": "integer"
           },
           "workspace_id": {
+            "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
             "format": "uuid",
             "type": "string"
           }
@@ -749,10 +759,11 @@
         "readOnlyHint": true,
         "title": "List channels"
       },
-      "description": "List channels in a workspace.",
+      "description": "List the channels of your own workspace that you can see: every public channel, the __dm__ system channel, and the private channels you belong to, sorted by name. Each row has id, workspace_id, name, topic, private, created_at, updated_at and tombstoned_at. Use get_workspace_context to get channels together with threads in one call, and list_dm_conversations for your direct messages. Requires workspace:read.",
       "inputSchema": {
         "properties": {
           "workspace_id": {
+            "description": "UUID of your own workspace (whoami returns it). A different workspace is refused.",
             "format": "uuid",
             "type": "string"
           }
@@ -796,16 +807,18 @@
         "readOnlyHint": true,
         "title": "List messages"
       },
-      "description": "List messages in a thread.",
+      "description": "List the messages in a thread, oldest first, excluding withdrawn (tombstoned) ones. Each message has id, author_id, body, metadata, content, posted_at, edited_at and origin. It returns the first limit messages with no cursor, so a long thread's later messages are not reachable here; use get_thread_context for a prompt-ready pack with message cursors and a token budget, or search_messages to find messages by text. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "limit": {
             "default": 100,
+            "description": "Maximum number of messages to return, counted from the oldest. Defaults to 100; values outside 1 to 500 are clamped into that range.",
             "maximum": 500,
             "minimum": 1,
             "type": "integer"
           },
           "thread_id": {
+            "description": "UUID of the thread whose messages to list.",
             "format": "uuid",
             "type": "string"
           }
@@ -909,10 +922,11 @@
         "readOnlyHint": true,
         "title": "List reviews"
       },
-      "description": "List a thread's review decisions (reviewer, decision, note).",
+      "description": "List each reviewer's current decision on a thread, ordered by creation time. A row has reviewer_id, decision (approve or request_changes), note, the delegate actor_id if one submitted it, evidence_root, head_sha and dismissed_at, which is set on an approval that a later change request invalidated. Re-submitting replaces a reviewer's row, so earlier verdicts are in list_review_history; whether the requirement is met is in get_review_status. Submit with submit_review. Requires workspace:read and read access to the thread's channel.",
       "inputSchema": {
         "properties": {
           "thread_id": {
+            "description": "UUID of the thread whose review decisions to list.",
             "format": "uuid",
             "type": "string"
           }
@@ -1068,7 +1082,7 @@
         "readOnlyHint": false,
         "title": "Post message"
       },
-      "description": "Post a message to a thread as the authenticated member.",
+      "description": "Post a message to a thread as the authenticated member and return the stored message (id, thread_id, author_id, body, metadata, content, posted_at). Send body for plain text or content for typed blocks; when body is empty it is derived from the blocks, and sending neither is refused. A closed thread still takes messages, while a deleted or archived thread refuses them. The post appends a MessagePosted event, records each @handle mention and publishes a mention event for it, and runs the registered slash command when the body begins with /name (see register_slash_command). For a DM conversation id use post_dm_message. Requires message:post.",
       "inputSchema": {
         "anyOf": [
           {
@@ -1084,11 +1098,11 @@
         ],
         "properties": {
           "body": {
-            "description": "plain text; omit when sending typed content (body is derived from it)",
+            "description": "Plain-text message text, which is what search indexes. Omit it or send an empty string when you pass content. At least one of body or content is required.",
             "type": "string"
           },
           "content": {
-            "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+            "description": "Typed content blocks in order. Each block has a type: text {text}, code {code, language}, tool_use {id, name, input}, tool_result {tool_use_id, content, is_error}, or resource_link {uri, mime_type, title}. When body is empty, body is built from the blocks; tool_use blocks add no text.",
             "items": {
               "properties": {
                 "type": {
@@ -1110,9 +1124,11 @@
             "type": "array"
           },
           "metadata": {
+            "description": "Free-form JSON object stored with the message and returned with it, for example {\"artifacts\": [\"<sha256>\"]} to name artifacts the message refers to. Defaults to an empty object.",
             "type": "object"
           },
           "thread_id": {
+            "description": "UUID of the thread to post in. You must be able to read it; a thread in a private channel or DM you are not part of is refused.",
             "format": "uuid",
             "type": "string"
           }
