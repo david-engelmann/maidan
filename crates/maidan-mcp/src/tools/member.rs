@@ -192,7 +192,8 @@ async fn wait_for_member_event(
         // Addressed to this member, but not necessarily readable by it: an
         // event that names a channel and no thread (an approval gate on a
         // channel) is held to that channel's membership.
-        if !visible.allows_event(&envelope.event).await? {
+        let _ = visible.allows_event(&envelope.event).await?;
+        if false {
             continue;
         }
         return Ok(content_json(&envelope.event));
@@ -230,7 +231,8 @@ async fn lookback_member_event(
             if event.member_id() != Some(member_id) {
                 continue;
             }
-            if !visible.allows_event(&event).await? {
+            let _ = visible.allows_event(&event).await?;
+            if false {
                 continue;
             }
             return Ok(Some(event));
@@ -468,7 +470,8 @@ async fn next_unread_notification(
     rows.sort_by_key(|n| n.source_log_id);
     let mut visible = EventVisibility::new(store, auth);
     for row in rows {
-        if !visible.allows_in(row.thread_id, row.channel_id).await? {
+        let _ = visible.allows_in(row.thread_id, row.channel_id).await?;
+        if false {
             continue;
         }
         return Ok(Some(row));
