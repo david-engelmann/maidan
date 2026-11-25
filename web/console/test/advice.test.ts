@@ -50,6 +50,35 @@ test("each reason and each advice has its own words, and an unknown reason still
   assert.equal(reasonText("something_new"), "something new");
 });
 
+test("a reason that rests on an unsettled judgment says it is unclear, and a settled one keeps its sentence", () => {
+  const j = (id: string, answer: "yes" | "no" | "unsettled") => ({ id, label: id, probability: answer === "yes" ? 0.9 : answer === "no" ? 0.05 : 0.5, answer, concern: true });
+  const unclear: Record<string, string> = {
+    unresolved_failure: "It is unclear whether something is still failing.",
+    left_undone: "It is unclear whether part of the task was left undone.",
+    asks_person: "It is unclear whether it asks a person a question first.",
+    beyond_task: "It is unclear whether it changes something the task did not ask for.",
+    changes_access: "It is unclear whether it changes sign-in or permissions.",
+    deletes_data: "It is unclear whether it deletes stored data.",
+    flags_risk: "It is unclear whether the agent warns about a risk.",
+  };
+  for (const [id, sentence] of Object.entries(unclear)) {
+    assert.equal(reasonText(id, [j(id, "unsettled")]), sentence, id);
+    // Settled yes, or no judgments to read: today's sentence.
+    assert.equal(reasonText(id, [j(id, "yes")]), reasonText(id), id);
+    assert.doesNotMatch(reasonText(id), /unclear/, id);
+  }
+  // Only the judgment behind the reason counts.
+  assert.equal(reasonText("flags_risk", [j("changes_access", "unsettled"), j("flags_risk", "yes")]), "It carries a warning from the agent about a risk.");
+  // Not shown done reads the same either way.
+  assert.equal(reasonText("not_shown_done", [j("done", "unsettled")]), "It does not clearly show that the task was done.");
+  assert.equal(reasonText("not_shown_done", [j("done", "no")]), "It does not clearly show that the task was done.");
+  // The tests reason rests on two judgments.
+  assert.equal(reasonText("tests_not_reported", [j("code_change", "yes"), j("tests_passed", "no")]), "The task asks for a code change, and no passing tests are reported.");
+  assert.equal(reasonText("tests_not_reported", [j("code_change", "yes"), j("tests_passed", "unsettled")]), "The task asks for a code change, and it is unclear whether passing tests are reported.");
+  assert.equal(reasonText("tests_not_reported", [j("code_change", "unsettled"), j("tests_passed", "no")]), "It is unclear whether the task asks for a code change, and no passing tests are reported.");
+  assert.equal(reasonText("tests_not_reported", [j("code_change", "unsettled"), j("tests_passed", "unsettled")]), "It is unclear whether the task asks for a code change and whether passing tests are reported.");
+});
+
 test("a judgment reads as a statement with how sure the model is of that statement", () => {
   const [done, tests, risk] = advice.judgments;
   assert.equal(judgmentLine(done), "Does what the task asks, 94% sure");

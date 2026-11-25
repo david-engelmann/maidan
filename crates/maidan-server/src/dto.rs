@@ -1656,6 +1656,10 @@ pub struct ConnectionInbound {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct Connection {
     pub surface: maidan_types::ConnectionSurface,
+    /// Whether this server can keep a token for the workspace. `false` when
+    /// the server has no `FEDERATION_ENCRYPTION_KEY`, and then a `PUT` is
+    /// answered `503`.
+    pub can_store: bool,
     /// `null` when nothing serves the workspace on this surface.
     pub source: Option<ConnectionSource>,
     /// The account the stored token belongs to.

@@ -64,7 +64,9 @@ test("what kept the advice from green is said in words, and its rows are marked 
   const panel = await screen.findByRole("region", { name: "Advice" });
   await within(panel).findByText("Worth a look");
   within(panel).getByText("The task asks for a code change, and no passing tests are reported.");
-  within(panel).getByText("It carries a warning from the agent about a risk.");
+  // The risk judgment is unsettled (50%), so the summary says unclear, not that a warning is carried.
+  within(panel).getByText("It is unclear whether the agent warns about a risk.");
+  expect(within(panel).queryByText("It carries a warning from the agent about a risk.")).toBeNull();
   const rows = Array.from(panel.querySelectorAll(".advice-row"));
   // The server's order is kept, so a row is where it was the last time.
   expect(rows.map((li) => [li.getAttribute("aria-label"), li.getAttribute("data-mark")])).toEqual([
@@ -73,6 +75,27 @@ test("what kept the advice from green is said in words, and its rows are marked 
     ["The task asks for a code change, 98% sure", "clear"],
     ["Unsure: Unclear whether the agent flags a risk, unsure", "unsure"],
   ]);
+});
+
+test("a settled warning and an unsettled one are each said as what they are", async () => {
+  const settled = {
+    ...amber,
+    reasons: ["changes_access", "flags_risk", "not_shown_done"],
+    judgments: [
+      judgment("done", "Does what the task asks", 0.5, "Unclear whether it does what the task asks", true),
+      judgment("changes_access", "Changes sign-in or permissions", 0.5, "Unclear whether it changes sign-in or permissions", true),
+      judgment("flags_risk", "Warns about a risk", 0.85, "The agent warns about a risk", true),
+    ],
+  };
+  const router = withSession([advice(() => settled)]);
+  await renderSignedIn(<Advice tid={TASK} />, router.fn);
+  const panel = await screen.findByRole("region", { name: "Advice" });
+  await within(panel).findByText("Worth a look");
+  within(panel).getByText("It is unclear whether it changes sign-in or permissions.");
+  expect(within(panel).queryByText("It changes sign-in or permissions.")).toBeNull();
+  within(panel).getByText("It carries a warning from the agent about a risk.");
+  // The done judgment is unsettled and its sentence stands for that too.
+  within(panel).getByText("It does not clearly show that the task was done.");
 });
 
 test("Ask again asks the model afresh", async () => {

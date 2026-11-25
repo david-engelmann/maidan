@@ -5,11 +5,13 @@
 // anyone else gets a sentence, not a refused request.
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CONNECTIONS_CANNOT_STORE,
   CONNECTIONS_HELP,
   CONNECTIONS_NEED,
   ConnectionsApi,
   connectRefusal,
   absoluteInboundUrl,
+  cannotStore,
   inboundLine,
   scrub,
   stateLine,
@@ -69,17 +71,22 @@ function ConnectionsPanel({ ws }: { ws: string | null }) {
   }
   if (!list.value.allowed) return shell(<p className="muted">{CONNECTIONS_NEED}</p>);
   const rows = list.value.value;
+  // A server with no key to encrypt with has nowhere to keep a token, so it
+  // says so once and offers no form. A connection stored before the key was
+  // lost is still listed, to remove.
+  const cannot = cannotStore(rows);
+  const shown = cannot ? rows.filter((row) => row.source === "workspace") : rows;
   return shell(
     <>
-      <p className="muted small">{CONNECTIONS_HELP}</p>
+      <p className="muted small" role={cannot ? "status" : undefined}>{cannot ? CONNECTIONS_CANNOT_STORE : CONNECTIONS_HELP}</p>
       {list.error ? <p className="err small" role="alert">This may be out of date. The last read failed. {list.error}</p> : null}
-      {rows.length ? (
+      {shown.length ? (
         <ul className="connection-list" aria-label="Connections">
-          {rows.map((row) => (
+          {shown.map((row) => (
             <ConnectionRow key={row.surface} ws={ws} api={api} row={row} reload={() => list.reload()} />
           ))}
         </ul>
-      ) : (
+      ) : cannot ? null : (
         <p className="muted">The server listed no surfaces to connect.</p>
       )}
     </>,
@@ -174,7 +181,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
         </div>
         <p className="small">{stateLine(row)}</p>
         {row.inbound && info ? <Inbound surface={surface} inbound={row.inbound} paste={info.paste} id={id} /> : null}
-        <form className="row-form" aria-label={`${name} connection`} onSubmit={(e) => void submit(e)}>
+        {row.can_store === false ? null : <form className="row-form" aria-label={`${name} connection`} onSubmit={(e) => void submit(e)}>
           <div className="field grow">
             <label htmlFor={`${id}-token`}>{tokenLabel}</label>
             <input
@@ -211,7 +218,7 @@ function ConnectionRow({ ws, api, row, reload }: { ws: string; api: ConnectionsA
           <button className="button steel" disabled={busy !== null || !sendable} aria-label={own ? `Replace the ${name} connection` : `Connect ${name}`}>
             {busy === "connect" ? "Checking…" : own ? "Replace" : "Connect"}
           </button>
-        </form>
+        </form>}
         {why ? <p className="err small" id={`${id}-why`} role="alert">{why}</p> : null}
       </div>
       {own ? (

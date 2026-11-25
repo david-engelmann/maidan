@@ -333,6 +333,16 @@ async fn spawn(advisor: Option<Option<&str>>) -> World {
 /// As [`spawn`], with the time the advisor gives a provider to answer.
 #[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
 async fn spawn_with_timeout(advisor: Option<Option<&str>>, timeout: Duration) -> World {
+    spawn_keyed(advisor, timeout, Some([7u8; 32])).await
+}
+
+/// As [`spawn_with_timeout`], with the instance's at-rest key given, or none.
+#[allow(clippy::disallowed_methods)] // a stand-in provider, not the API
+async fn spawn_keyed(
+    advisor: Option<Option<&str>>,
+    timeout: Duration,
+    encryption_key: Option<[u8; 32]>,
+) -> World {
     let provider = Arc::new(Provider::default());
     let provider_app = Router::new()
         .route("/v1/systemone", post(systemone))
@@ -363,7 +373,7 @@ async fn spawn_with_timeout(advisor: Option<Option<&str>>, timeout: Duration) ->
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
     let mut state = AppState::for_tests(store.clone(), artifacts, bus, search);
     // Workspace secrets need the at-rest key; set before the advisor copies it.
-    state.federation = FederationRuntime::new(true, Some(Arc::new([7u8; 32])));
+    state.federation = FederationRuntime::new(true, encryption_key.map(Arc::new));
     if let Some(instance_key) = advisor {
         let advisor = LandGateAdvisor::with_http(
             reqwest::Client::new(),
@@ -710,6 +720,58 @@ async fn a_task_with_no_result_has_nothing_to_advise_on() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::CONFLICT);
     assert!(world.asked().is_empty(), "nothing left for the provider");
+}
+
+#[tokio::test]
+async fn the_status_says_whether_this_instance_can_store_a_workspaces_key() {
+    let status_of = |world: &World, tenant: &test_support::Tenant| {
+        let request = tenant
+            .client()
+            .get(world.url(&format!(
+                "/workspaces/{}/land-gate/advisor",
+                tenant.workspace_id.0
+            )))
+            .send();
+        async move { request.await.unwrap().json::<Value>().await.unwrap() }
+    };
+
+    // With the at-rest key, a key can be stored, before and after one is.
+    let world = spawn(Some(None)).await;
+    let tenant = test_support::tenant(world.store.as_ref(), "can-store").await;
+    assert_eq!(status_of(&world, &tenant).await["can_store_key"], true);
+    let advisor = world.url(&format!(
+        "/workspaces/{}/land-gate/advisor",
+        tenant.workspace_id.0
+    ));
+    let set: Value = tenant
+        .client()
+        .put(&advisor)
+        .json(&json!({ "api_key": WORKSPACE_KEY }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(set["can_store_key"], true, "{set}");
+
+    // Without it the status says so up front, and a write is still refused.
+    let keyless = spawn_keyed(Some(None), Duration::from_secs(5), None).await;
+    let tenant = test_support::tenant(keyless.store.as_ref(), "cannot-store").await;
+    let status = status_of(&keyless, &tenant).await;
+    assert_eq!(status["enabled"], true, "{status}");
+    assert_eq!(status["can_store_key"], false, "{status}");
+    let refused = tenant
+        .client()
+        .put(keyless.url(&format!(
+            "/workspaces/{}/land-gate/advisor",
+            tenant.workspace_id.0
+        )))
+        .json(&json!({ "api_key": WORKSPACE_KEY }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::CONFLICT);
 }
 
 #[tokio::test]

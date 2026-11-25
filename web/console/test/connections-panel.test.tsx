@@ -368,3 +368,34 @@ test("switching workspace mounts a fresh panel, so a token typed for the last on
   expect(fresh.value).toBe("");
   expect(document.body.innerHTML).not.toContain(TOKEN);
 });
+
+test("a server with no encryption key says so once and offers no form", async () => {
+  const router = withSession([{ match: LIST, body: () => [github(), slack(), linear()].map((row) => ({ ...row, can_store: false })) }]);
+  await renderSignedIn(<Connections ws="ws" />, router.fn);
+  await screen.findByText("This server cannot store connections. Its operator has not set an encryption key.");
+  expect(screen.queryByRole("button", { name: /^Connect / })).toBeNull();
+  expect(screen.queryByLabelText(/personal access token|bot token|API key|Token/i)).toBeNull();
+  expect(document.querySelector("form")).toBeNull();
+  expect(screen.queryByText(/stored encrypted and never shown again/)).toBeNull();
+});
+
+test("a connection stored before the key was lost is still listed, to remove", async () => {
+  const router = withSession([
+    { match: LIST, body: () => [github({ source: "workspace", account: "octocat" }), slack(), linear()].map((row) => ({ ...row, can_store: false })) },
+  ]);
+  await renderSignedIn(<Connections ws="ws" />, router.fn);
+  await screen.findByText("This server cannot store connections. Its operator has not set an encryption key.");
+  within(rowOf("github")).getByRole("button", { name: "Remove the GitHub connection…" });
+  expect(document.querySelector("form")).toBeNull();
+  expect(document.querySelector('[data-surface="slack"]')).toBeNull();
+});
+
+test("a server that can store a token, or does not say, offers the forms", async () => {
+  for (const can_store of [true, undefined]) {
+    const router = withSession([{ match: LIST, body: () => [github(), slack(), linear()].map((row) => ({ ...row, can_store })) }]);
+    await renderSignedIn(<Connections ws="ws" />, router.fn);
+    await screen.findByRole("button", { name: "Connect GitHub" });
+    expect(screen.queryByText(/cannot store connections/)).toBeNull();
+    cleanup();
+  }
+});

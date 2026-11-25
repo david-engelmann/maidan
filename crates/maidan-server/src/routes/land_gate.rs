@@ -111,6 +111,21 @@ async fn advisor_admin(
     }
 }
 
+/// What a workspace has set up, and whether this instance has the encryption
+/// key that storing a workspace's key needs, so a console can say so before a
+/// person types one.
+async fn status_of(
+    state: &AppState,
+    advisor: &crate::land_gate_advisor::LandGateAdvisor,
+    workspace_id: WorkspaceId,
+) -> Result<LandGateAdvisorStatus, LandGateAdvisorError> {
+    let can_store_key = state.federation.encryption_key.is_some();
+    advisor
+        .status(state.store.as_ref(), workspace_id)
+        .await
+        .map(|status| status.with_storage(can_store_key))
+}
+
 /// `GET /workspaces/:id/land-gate/advisor`: whether this instance offers
 /// advice, and whose key a call from this workspace would use. Never the key.
 pub async fn get_land_gate_advisor(
@@ -124,8 +139,7 @@ pub async fn get_land_gate_advisor(
     let Some(advisor) = state.land_gate_advisor.as_ref() else {
         return Ok(Json(LandGateAdvisorStatus::disabled()));
     };
-    advisor
-        .status(state.store.as_ref(), workspace_id)
+    status_of(&state, advisor, workspace_id)
         .await
         .map(Json)
         .map_err(|error| advisor_error(error, "advisor status"))
@@ -192,8 +206,7 @@ pub async fn set_land_gate_advisor(
         .map_err(|error| advisor_error(error, "advisor key check"))?;
     // Read before the write: what the write then makes true is known without
     // a second read that could fail after it committed.
-    let before = advisor
-        .status(state.store.as_ref(), workspace_id)
+    let before = status_of(&state, advisor, workspace_id)
         .await
         .map_err(|error| advisor_error(error, "advisor status"))?;
     let value_ciphertext = maidan_auth::encrypt_peer_secret(api_key, key)
@@ -224,7 +237,7 @@ pub async fn set_land_gate_advisor(
     // What is stored now. Should this read fail after the write committed,
     // the answer is what the write made true of the status read before it.
     Ok(Json(
-        match advisor.status(state.store.as_ref(), workspace_id).await {
+        match status_of(&state, advisor, workspace_id).await {
             Ok(now) => now,
             Err(_) => before.with_key(provider, Some(AdvisorKeySource::Workspace)),
         },
@@ -245,8 +258,7 @@ pub async fn clear_land_gate_advisor(
     advisor_admin(&state, &auth, session.as_ref().map(|s| &s.0), workspace_id).await?;
     let advisor = state.land_gate_advisor.as_ref().ok_or(ApiError::NotFound)?;
     let provider = query.provider.unwrap_or(AdvisorProvider::Typesafe);
-    let before = advisor
-        .status(state.store.as_ref(), workspace_id)
+    let before = status_of(&state, advisor, workspace_id)
         .await
         .map_err(|error| advisor_error(error, "advisor status"))?;
     state
@@ -271,7 +283,7 @@ pub async fn clear_land_gate_advisor(
         .has_instance_key(provider)
         .then_some(AdvisorKeySource::Instance);
     Ok(Json(
-        match advisor.status(state.store.as_ref(), workspace_id).await {
+        match status_of(&state, advisor, workspace_id).await {
             Ok(now) => now,
             Err(_) => before.with_key(provider, left),
         },

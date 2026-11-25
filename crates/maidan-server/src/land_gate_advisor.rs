@@ -561,6 +561,10 @@ pub struct LandGateAdvisorProvider {
 pub struct LandGateAdvisorStatus {
     /// Whether this instance offers advice at all.
     pub enabled: bool,
+    /// Whether this instance can keep a key for a workspace. `false` when it
+    /// has no `FEDERATION_ENCRYPTION_KEY`, and then a `PUT` is refused with
+    /// `409`.
+    pub can_store_key: bool,
     /// The provider a call that names none would ask: the first with a key
     /// for this workspace, or the first of all when none has one. The four
     /// fields below describe it.
@@ -581,6 +585,7 @@ impl LandGateAdvisorStatus {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
+            can_store_key: false,
             key_source: None,
             provider: None,
             model: None,
@@ -596,6 +601,7 @@ impl LandGateAdvisorStatus {
             .or(providers.first());
         Self {
             enabled: true,
+            can_store_key: false,
             key_source: chosen.and_then(|provider| provider.key_source),
             provider: chosen.map(|provider| provider.id.id().to_string()),
             model: chosen.map(|provider| provider.model.clone()),
@@ -604,16 +610,25 @@ impl LandGateAdvisorStatus {
         }
     }
 
+    /// The same status, saying whether the instance can keep a workspace's key.
+    /// The advisor does not hold the encryption key, so the route that does
+    /// says it.
+    pub fn with_storage(mut self, can_store_key: bool) -> Self {
+        self.can_store_key = can_store_key;
+        self
+    }
+
     /// The same status with one provider's key changed: what a write that
     /// just committed made true, without a second read that could fail.
     pub fn with_key(self, provider: AdvisorProvider, key_source: Option<AdvisorKeySource>) -> Self {
+        let can_store_key = self.can_store_key;
         let mut providers = self.providers;
         for entry in &mut providers {
             if entry.id == provider {
                 entry.key_source = key_source;
             }
         }
-        Self::of(providers)
+        Self::of(providers).with_storage(can_store_key)
     }
 }
 

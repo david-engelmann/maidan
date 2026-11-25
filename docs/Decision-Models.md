@@ -181,6 +181,12 @@ what made it red first, and marks the judgments behind each reason.
 | `left_undone`, `asks_person`, `beyond_task`, `changes_access`, `deletes_data`, `flags_risk` | That judgment is not a settled no |
 | `tests_not_reported` | The task asks, or may ask, for a code change, and `tests_passed` is not a yes |
 
+A reason can rest on a judgment the model could not settle. The reason is the
+same, and the `answer` of the judgment behind it is `unsettled`. The console
+reads that and says so in the summary ("It is unclear whether it changes
+sign-in or permissions") and keeps the plain sentence ("It changes sign-in or
+permissions") for a settled yes. `not_shown_done` reads the same either way.
+
 ## Asking
 
 ```sh
@@ -261,8 +267,10 @@ curl -X PUT "$MAIDAN/workspaces/$WS/land-gate/advisor" \
   -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"api_key": "…", "provider": "cloudflare", "account_id": "…"}'
 # What is set up. The top-level fields describe the provider a call that
-# names none would ask, and `providers` lists all five:
-# {"enabled": true, "key_source": "workspace", "provider": "openai", "model": "gpt-6-luna", "host": "api.openai.com",
+# names none would ask, and `providers` lists all five. `can_store_key` is
+# false on an instance without FEDERATION_ENCRYPTION_KEY, which cannot keep a
+# workspace's key (a PUT answers 409), and the console says so in place of the forms:
+# {"enabled": true, "can_store_key": true, "key_source": "workspace", "provider": "openai", "model": "gpt-6-luna", "host": "api.openai.com",
 #  "providers": [{"id": "typesafe", "name": "TypeSafe Jev", "model": "jev-latest", "host": "api.typesafe.ai"},
 #                {"id": "openai", "name": "OpenAI Decisions", "model": "gpt-6-luna", "host": "api.openai.com", "key_source": "workspace"},
 #                {"id": "google", "name": "Gemini Decisions", "model": "gemini-decision-1", "host": "generativelanguage.googleapis.com"},

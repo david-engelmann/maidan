@@ -164,7 +164,7 @@ export function Advice({ tid, stamp = "" }: { tid: string; stamp?: string }) {
         <p className="advice-why">{ALL_CLEAR}</p>
       ) : (
         <ul className="advice-why">
-          {advice.reasons.map((r) => <li key={r}>{reasonText(r)}</li>)}
+          {advice.reasons.map((r) => <li key={r}>{reasonText(r, advice.judgments)}</li>)}
         </ul>
       )}
       <details className="advice-rest">
