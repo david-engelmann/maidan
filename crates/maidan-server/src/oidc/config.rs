@@ -249,6 +249,16 @@ pub struct OidcRuntime {
 }
 
 impl OidcRuntime {
+    /// The origin of the provider's authorization endpoint, or `None` in
+    /// mock mode. The sign-up form posts to this server, which answers with a
+    /// 303 to the provider, and a browser checks `form-action` against every
+    /// hop of a form's redirects: a page whose policy does not name this
+    /// origin submits the form and then goes nowhere.
+    pub fn authorize_origin(&self) -> Option<String> {
+        let origin = self.client.as_ref()?.auth_uri().url().origin();
+        origin.is_tuple().then(|| origin.ascii_serialization())
+    }
+
     pub async fn init(settings: OidcSettings) -> Result<Self, OidcInitError> {
         let session_secret = session_secret_from_env()?;
         if settings.is_mock() {
