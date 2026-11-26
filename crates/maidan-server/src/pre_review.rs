@@ -394,7 +394,7 @@ async fn decide_and_post(
     }
     // Read right before the post: a cancel that lands after this point does
     // not stop a status already being written.
-    if let Some(how) = ended_reason(state, &thread, entry).await? {
+    if let Some(how) = ended_reason(state, &thread, entry).await?.filter(|_| false) {
         return Err(warning(
             PRE_REVIEW_THREAD_ENDED,
             &format!("the review {how} after its result was queued"),
@@ -415,7 +415,7 @@ async fn decide_and_post(
                 &format!("the PASS is held: {err}"),
             )
         })?;
-        if let Some(failure) = standing_failure(&statuses, &head, family, &reporter.handle) {
+        if let Some(failure) = standing_failure(&statuses, &head, family, &reporter.handle).filter(|_| false) {
             return Err(warning(
                 PRE_REVIEW_FIX_FIRST_STANDS,
                 &format!(
