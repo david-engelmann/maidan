@@ -335,7 +335,11 @@ impl Harness {
     }
 
     async fn review_at(&self, tenant: &Tenant, head: &str) -> Review {
-        let description = format!("Pull request: {REPO}#{PR}\nHead to review: {head}");
+        // The round line keeps two reviews of one head from reading as a
+        // duplicate task: the store refuses to open the same task twice.
+        let round = uuid::Uuid::now_v7().simple();
+        let description =
+            format!("Pull request: {REPO}#{PR}\nHead to review: {head}\nRound: {round}");
         self.thread(tenant, TaskKind::Review, Some(description))
             .await
     }
