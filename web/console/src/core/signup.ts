@@ -71,6 +71,8 @@ export type SignupCheck = {
   name: string;
   invite: string | null;
   returnTo: string;
+  /** Why the last try was refused, as a sentence for the form, or null. */
+  refusal: string | null;
 };
 
 /** The query the sign-up start leaves on `/ui/`. */
@@ -82,5 +84,29 @@ export function readSignupCheck(search: string): SignupCheck {
     name: q.get("workspace_name") ?? "",
     invite: invite && invite.length > 0 ? invite : null,
     returnTo: sameOriginReturn(q.get("return_to")),
+    refusal: signupRefusalText(q.get("signup_error")),
   };
+}
+
+/**
+ * The server's refusal code (`signup_refusal` in the OIDC handlers) as a
+ * sentence. An unknown code reads as the general one, so a new code never
+ * shows nothing.
+ */
+export function signupRefusalText(code: string | null): string | null {
+  switch (code) {
+    case null:
+    case "":
+      return null;
+    case "check":
+      return "The human check didn't go through. Complete it again, then create your workspace.";
+    case "unavailable":
+      return "The human check couldn't be verified just now. Try again in a moment.";
+    case "name":
+      return "That workspace name can't be used. Choose another one.";
+    case "refused":
+      return "This sign-up couldn't start. If you followed an invite link, ask for a new one.";
+    default:
+      return "Something went wrong starting your sign-up. Try again in a moment.";
+  }
 }

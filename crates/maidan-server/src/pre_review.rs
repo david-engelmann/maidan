@@ -12,13 +12,20 @@
 //! knows itself (the reporting member's handle and the provider family its
 //! own usage names). Anything else posts nothing and leaves a warning on the
 //! delivery row. The comment is delivered either way.
+//!
+//! GitHub shows only the newest status for a context, so a PASS posted just
+//! after another reporter's FIX-FIRST would hide it. A FIX-FIRST always
+//! posts; a PASS first reads the head's `pre-review` statuses and is held,
+//! with a warning, while the newest one this reporter did not write is a
+//! failure. A review thread that was cancelled after its result was queued
+//! posts no status at all.
 
 use maidan_types::{
     is_git_sha, ChangeCheck, CommitStatusState, EgressOutbox, EgressTarget, TaskKind, ThreadResult,
     WaiterResult, CHANGE_CHECK_DESCRIPTION_MAX_CHARS, PRE_REVIEW_SKILL, PROVIDER_FAMILIES,
 };
 
-use crate::github::GithubSender;
+use crate::github::{GithubCommitStatus, GithubSender};
 use crate::state::AppState;
 
 /// The commit status contexts a review result may post. One entry on
@@ -55,6 +62,14 @@ pub const PRE_REVIEW_FAMILY_UNKNOWN: &str = "pre_review_family_unknown";
 pub const PRE_REVIEW_DESCRIPTION_REFUSED: &str = "pre_review_description_refused";
 /// GitHub did not take the status, or this sender cannot post one.
 pub const PRE_REVIEW_NOT_POSTED: &str = "pre_review_not_posted";
+/// A PASS is held: the newest `pre-review` status on the head that this
+/// reporter did not write is a failure, and a PASS would replace it.
+pub const PRE_REVIEW_FIX_FIRST_STANDS: &str = "pre_review_fix_first_stands";
+/// A PASS is held: the head's `pre-review` statuses could not be read, so it
+/// is not known whether it would replace a failure.
+pub const PRE_REVIEW_STATUSES_UNREAD: &str = "pre_review_statuses_unread";
+/// The review thread was cancelled or deleted after its result was queued.
+pub const PRE_REVIEW_THREAD_ENDED: &str = "pre_review_thread_ended";
 
 /// How many of the thread's usage records are read to find the reporter's
 /// latest: the store's own cap on one page of a thread's ledger.
@@ -167,6 +182,45 @@ pub fn status_description(
         ));
     }
     Ok(description)
+}
+
+/// Whether `description` is one this reporter's own review writes for `head`:
+/// [`status_description`] with either verdict. A status that does not read
+/// this way came from another reporter, another system or a person.
+fn written_by(description: &str, head: &str, family: &str, handle: &str) -> bool {
+    [Verdict::Pass, Verdict::FixFirst]
+        .into_iter()
+        .any(|verdict| {
+            status_description(verdict, head, family, handle).is_ok_and(|own| own == description)
+        })
+}
+
+/// The newest `pre-review` status that is a failure and was not written by
+/// this reporter, when it is the newest one not written by this reporter at
+/// all. `statuses` is newest first, as GitHub lists them. The reporter's own
+/// earlier statuses are skipped: a reviewer that fixed its own FIX-FIRST
+/// replaces it, and what it must not replace is another reporter's.
+fn standing_failure<'a>(
+    statuses: &'a [GithubCommitStatus],
+    head: &str,
+    family: &str,
+    handle: &str,
+) -> Option<&'a GithubCommitStatus> {
+    statuses
+        .iter()
+        .filter(|status| status.context == PRE_REVIEW_CONTEXT)
+        .find(|status| {
+            !status
+                .description
+                .as_deref()
+                .is_some_and(|description| written_by(description, head, family, handle))
+        })
+        .filter(|status| {
+            matches!(
+                status.state,
+                CommitStatusState::Failure | CommitStatusState::Error
+            )
+        })
 }
 
 /// A warning for the delivery row: its code, then a detail. The row stores
@@ -338,12 +392,41 @@ async fn decide_and_post(
             "it reads as a credential",
         ));
     }
+    // Read right before the post: a cancel that lands after this point does
+    // not stop a status already being written.
+    if let Some(how) = ended_reason(state, &thread, entry).await? {
+        return Err(warning(
+            PRE_REVIEW_THREAD_ENDED,
+            &format!("the review {how} after its result was queued"),
+        ));
+    }
     let Some(git) = sender.git() else {
         return Err(warning(
             PRE_REVIEW_NOT_POSTED,
             "this GitHub sender cannot post commit statuses",
         ));
     };
+    // Only a PASS can hide another reporter's verdict: a FIX-FIRST replaces
+    // a PASS on purpose, and it is never held.
+    if verdict == Verdict::Pass {
+        let statuses = git.commit_statuses(repo, &head).await.map_err(|err| {
+            warning(
+                PRE_REVIEW_STATUSES_UNREAD,
+                &format!("the PASS is held: {err}"),
+            )
+        })?;
+        if let Some(failure) = standing_failure(&statuses, &head, family, &reporter.handle) {
+            return Err(warning(
+                PRE_REVIEW_FIX_FIRST_STANDS,
+                &format!(
+                    "the PASS is held: the newest other pre-review status on {} is {} ({})",
+                    &head[..9],
+                    failure.state.as_str(),
+                    failure.description.as_deref().unwrap_or("no description"),
+                ),
+            ));
+        }
+    }
     let check = ChangeCheck {
         context: PRE_REVIEW_CONTEXT.to_string(),
         state: verdict.state(),
@@ -354,6 +437,32 @@ async fn decide_and_post(
         .await
         .map_err(|err| warning(PRE_REVIEW_NOT_POSTED, &err.to_string()))?;
     Ok(Some(description))
+}
+
+/// How the review thread ended without landing, when it did: it was deleted,
+/// or cancelled. A close that landed, or one that abandoned the task, still
+/// posts: only a cancel says the review's result is no longer wanted.
+async fn ended_reason(
+    state: &AppState,
+    thread: &maidan_types::Thread,
+    entry: &EgressOutbox,
+) -> Result<Option<&'static str>, String> {
+    if thread.tombstoned_at.is_some() {
+        return Ok(Some("was deleted"));
+    }
+    let closed = state
+        .store
+        .thread_unlanded_close(entry.thread_id)
+        .await
+        .map_err(|err| {
+            warning(
+                PRE_REVIEW_NOT_POSTED,
+                &format!("the thread's end not read: {err}"),
+            )
+        })?;
+    Ok(closed
+        .filter(|reason| reason == "cancelled")
+        .map(|_| "was cancelled"))
 }
 
 /// The reporter's own provider family: from its latest usage record on the
@@ -569,6 +678,99 @@ mod tests {
         )
         .unwrap_err();
         assert!(failed.starts_with(PRE_REVIEW_NOT_REVIEWED), "{failed}");
+    }
+
+    fn status(context: &str, state: CommitStatusState, description: &str) -> GithubCommitStatus {
+        GithubCommitStatus {
+            context: context.to_string(),
+            state,
+            description: Some(description.to_string()),
+        }
+    }
+
+    #[test]
+    fn a_failure_by_another_reporter_stands_over_a_pass() {
+        let statuses = [
+            status(
+                "pre-review",
+                CommitStatusState::Failure,
+                "FIX-FIRST at 012345678 by openai as seat-b",
+            ),
+            status(
+                "pre-review",
+                CommitStatusState::Success,
+                "PASS at 012345678 by deepseek as seat-a",
+            ),
+        ];
+        let held = standing_failure(&statuses, HEAD, "deepseek", "seat-a").expect("held");
+        assert_eq!(held.state, CommitStatusState::Failure);
+        // The other reporter's own view: its FIX-FIRST is its own, and the
+        // newest status it did not write is a PASS.
+        assert_eq!(standing_failure(&statuses, HEAD, "openai", "seat-b"), None);
+    }
+
+    #[test]
+    fn a_reporters_own_earlier_failure_does_not_hold_its_pass() {
+        let statuses = [status(
+            "pre-review",
+            CommitStatusState::Failure,
+            "FIX-FIRST at 012345678 by deepseek as seat-a",
+        )];
+        assert_eq!(
+            standing_failure(&statuses, HEAD, "deepseek", "seat-a"),
+            None
+        );
+        // The same handle under another family is another reporter.
+        assert!(standing_failure(&statuses, HEAD, "openai", "seat-a").is_some());
+    }
+
+    #[test]
+    fn only_the_newest_status_another_reporter_wrote_decides() {
+        let statuses = [
+            status(
+                "pre-review",
+                CommitStatusState::Success,
+                "PASS at 012345678 by openai as seat-b",
+            ),
+            status(
+                "pre-review",
+                CommitStatusState::Failure,
+                "FIX-FIRST at 012345678 by xai as seat-c",
+            ),
+        ];
+        assert_eq!(
+            standing_failure(&statuses, HEAD, "deepseek", "seat-a"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_status_of_another_context_or_a_pending_one_holds_nothing() {
+        let statuses = [
+            status("stamp", CommitStatusState::Failure, "stamp refused"),
+            status("security", CommitStatusState::Error, "scan broke"),
+            status("pre-review", CommitStatusState::Pending, "waiting"),
+        ];
+        assert_eq!(
+            standing_failure(&statuses, HEAD, "deepseek", "seat-a"),
+            None
+        );
+        assert_eq!(standing_failure(&[], HEAD, "deepseek", "seat-a"), None);
+    }
+
+    #[test]
+    fn an_error_or_a_failure_without_a_description_holds_a_pass() {
+        for state in [CommitStatusState::Failure, CommitStatusState::Error] {
+            let statuses = [GithubCommitStatus {
+                context: "pre-review".to_string(),
+                state,
+                description: None,
+            }];
+            assert!(
+                standing_failure(&statuses, HEAD, "deepseek", "seat-a").is_some(),
+                "{state:?}"
+            );
+        }
     }
 
     #[test]

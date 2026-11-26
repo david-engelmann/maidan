@@ -190,6 +190,23 @@ the target's repository, only when every rule holds:
   `review_family` label. A gate parses it with
   `^PASS at <sha9> by [A-Za-z0-9][A-Za-z0-9 ._-]*$`, so a family or handle
   outside that alphabet, or a line over 140 characters, posts nothing.
+- **A PASS never hides another reporter's FIX-FIRST.** GitHub shows only the
+  newest status of a context, so a `PASS` first reads the head's `pre-review`
+  statuses (`GET /repos/{repo}/commits/{sha}/statuses`). Statuses written by
+  the same reporter (same handle and family) are skipped, so a reviewer
+  replaces its own FIX-FIRST with a PASS once the work is fixed. When the
+  newest status left is a failure, from another reporter or another system,
+  the PASS is held
+  (`pre_review_fix_first_stands: the PASS is held: the newest other
+  pre-review status on <sha9> is failure (<its description>)`). When the
+  list cannot be read the PASS is held too
+  (`pre_review_statuses_unread`). A `FIX-FIRST` always posts and reads
+  nothing. The comment is delivered in every case.
+- **The review thread was not cancelled.** A result whose thread was
+  cancelled (or deleted) after the result was queued posts no status, of
+  either verdict (`pre_review_thread_ended: the review was cancelled after
+  its result was queued`). A cancel that lands after the status call has
+  started does not stop it.
 
 It is best effort, like the inline review: a refused rule or a status GitHub
 does not take never fails or retries the comment. What stopped it is recorded

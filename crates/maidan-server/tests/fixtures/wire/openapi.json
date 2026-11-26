@@ -14027,8 +14027,52 @@
         ],
         "type": "object"
       },
+      "WebhookActsAs": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/WebhookTokenStatus"
+          },
+          "token_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ApiTokenId"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
       "WebhookResponse": {
         "properties": {
+          "acts_as": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookActsAs"
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -14077,6 +14121,14 @@
       },
       "WebhookSubscriptionId": {
         "format": "uuid",
+        "type": "string"
+      },
+      "WebhookTokenStatus": {
+        "enum": [
+          "live",
+          "expiring",
+          "ended"
+        ],
         "type": "string"
       },
       "WellKnownA2a": {

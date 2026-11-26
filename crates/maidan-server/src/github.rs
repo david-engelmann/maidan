@@ -1067,6 +1067,14 @@ pub struct GithubCommitBrief {
     pub message: String,
 }
 
+/// One commit status on a commit, as GitHub lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubCommitStatus {
+    pub context: String,
+    pub state: maidan_types::CommitStatusState,
+    pub description: Option<String>,
+}
+
 /// A merged pull request, as GitHub lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GithubMergedPull {
@@ -1349,6 +1357,15 @@ pub trait GithubGit: Send + Sync {
         branch: &str,
         since: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<GithubCommitBrief>, GithubError>;
+    /// `GET /repos/{repo}/commits/{sha}/statuses`: up to the newest 100
+    /// commit statuses on `sha`, newest first, every context together. A
+    /// read, for the `pre-review` status's check that a PASS does not
+    /// replace another reporter's FIX-FIRST.
+    async fn commit_statuses(
+        &self,
+        repo: &str,
+        sha: &str,
+    ) -> Result<Vec<GithubCommitStatus>, GithubError>;
     /// `GET /repos/{repo}/pulls?state=closed&base={base}`: the 100 most
     /// recently updated closed pull requests into `base`, merged ones only.
     /// A read.
@@ -2548,6 +2565,41 @@ impl GithubGit for GithubApiClient {
                 Some(GithubCommitBrief {
                     sha: commit.get("sha")?.as_str()?.to_ascii_lowercase(),
                     message: commit.pointer("/commit/message")?.as_str()?.to_string(),
+                })
+            })
+            .collect())
+    }
+
+    async fn commit_statuses(
+        &self,
+        repo: &str,
+        sha: &str,
+    ) -> Result<Vec<GithubCommitStatus>, GithubError> {
+        // The SHA is a path segment: only a full commit SHA is ever sent.
+        if !maidan_types::is_git_sha(sha) {
+            return Err(GithubError::Refused(format!("`{sha}` is not a commit")));
+        }
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/commits/{sha}/statuses?per_page=100"),
+                )
+                .await?,
+            )
+            .await?;
+        // An entry whose state is not one of GitHub's four names is dropped:
+        // it cannot be read as a failure, and a malformed one is not a gate.
+        Ok(list(&value)
+            .filter_map(|status| {
+                Some(GithubCommitStatus {
+                    context: status.get("context")?.as_str()?.to_string(),
+                    state: maidan_types::CommitStatusState::parse(status.get("state")?.as_str()?)?,
+                    description: status
+                        .get("description")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string),
                 })
             })
             .collect())

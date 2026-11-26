@@ -1893,6 +1893,36 @@ pub struct WebhookResponse {
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
+    // The token the webhook acts as and whether it still can. Present only
+    // on a list read by a caller who may list the workspace's tokens
+    // (`token:admin`); absent for every other caller and on a create.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acts_as: Option<WebhookActsAs>,
+}
+
+// Where a webhook's token stands. A webhook is revoked at its next event
+// once its token is `ended`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookTokenStatus {
+    // The token can register the webhook again and has no expiry.
+    Live,
+    // The token can register the webhook again and ends at `expires_at`.
+    Expiring,
+    // The token no longer can: revoked, expired, rotated, its member
+    // deactivated, its capability gone, or the webhook has no token.
+    Ended,
+}
+
+// The token a webhook acts as, never its secret. `token_id` is absent when
+// the webhook was registered without a token, which never delivers;
+// `expires_at` is when the token expires or expired, if it has an expiry.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WebhookActsAs {
+    pub token_id: Option<ApiTokenId>,
+    pub label: Option<String>,
+    pub status: WebhookTokenStatus,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 impl From<maidan_types::WebhookSubscription> for WebhookResponse {
@@ -1906,6 +1936,7 @@ impl From<maidan_types::WebhookSubscription> for WebhookResponse {
             enabled: w.enabled,
             created_at: w.created_at,
             revoked_at: w.revoked_at,
+            acts_as: None,
         }
     }
 }
@@ -2211,7 +2242,7 @@ pub struct OidcCallbackQuery {
     pub mock_email: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcSignupQuery {
     /// The invite token from the operator's invite link, or a workspace

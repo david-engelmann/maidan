@@ -125,7 +125,7 @@ pub async fn ui_list_webhooks(
         Act::List,
     )
     .await?;
-    crate::webhooks::list(&state, workspace_id).await
+    crate::webhooks::list(&state, &auth, workspace_id).await
 }
 
 /// `POST /ui/api/workspaces/:wid/webhooks`.
