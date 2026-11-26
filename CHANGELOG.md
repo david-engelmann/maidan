@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [483.0.0] — 2026-11-26
+
+Glama can connect to maidan.world through OAuth.
+
+### Glama can connect to maidan.world through OAuth
+
+- **Changed:** maidan.world and dev.maidan.world accept OAuth client metadata documents from `glama.ai`, so Glama's connector checks and its users can sign in. Its authorize request was refused because the host was not on the list.
+
 ## [482.0.0] — 2026-11-26
 
 A refused sign-up returns to the form with a reason, a review's PASS never hides another reviewer's FIX-FIRST, the webhook list says which token each webhook acts as, and the example skills carry their five review fixes.
