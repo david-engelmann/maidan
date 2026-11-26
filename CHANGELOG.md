@@ -7,6 +7,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [482.0.0] — 2026-11-26
+
+A refused sign-up returns to the form with a reason, a review's PASS never hides another reviewer's FIX-FIRST, the webhook list says which token each webhook acts as, and the example skills carry their five review fixes.
+
+### The example skills' five review findings are fixed
+
+- **Fixed:** the change result helper (`examples/claude-code/maidan-claimant/change_result.py`) reads git's output as bytes, so a patch for a CRLF file keeps its carriage returns and applies, and it pins `diff.relative=false`, so a checkout subdirectory or a user's git config cannot turn `sub/new.txt` into `new.txt` or hide changes outside the directory. `scripts/test-change-result.py` runs the helper against throwaway repositories in the `lint` job.
+- **Fixed:** the claimant runbook's follow-up section picks the branch first: a thread whose previous result names a fallback branch of the session's own is fetched and pushed to directly, instead of fetching a `feature/agent-*` branch that was never pushed.
+- **Fixed:** the reviewer skill asks the worker for a result on the new head and fetches a new review packet when the pull request's head moves, instead of reviewing the new head against the old packet's evidence.
+- **Fixed:** the red-team notes claim a review by repository and `kind: "review"` without `engine`, as the reviewer skill does, so reviews of changes routed to another engine are not hidden from the seat.
+- **Changed:** the Copilot package's copies under `skills/` follow the examples byte for byte.
+
+### A review's PASS never hides another reporter's FIX-FIRST
+
+- **Fixed:** a `pre-review` commit status of `PASS` is no longer posted over a failure another reporter left. GitHub shows only the newest status of a context, so a seat that finished just after another reporter's `FIX-FIRST` replaced it. Before posting a `PASS`, Maidan reads the head's `pre-review` statuses (`GET /repos/{repo}/commits/{sha}/statuses`) and holds the `PASS` while the newest status the reporter did not write is a failure; a status the reporter wrote itself does not hold it, so a reviewer still replaces its own `FIX-FIRST` once the work is fixed. The delivery row names the hold in `delivery_warnings` (`pre_review_fix_first_stands`, or `pre_review_statuses_unread` when the list cannot be read). A `FIX-FIRST` always posts and reads nothing.
+- **Fixed:** a review thread cancelled after its result was queued no longer posts a `pre-review` status (`pre_review_thread_ended`). The cancel stopped a later result but not a delivery already queued.
+
+### A refused sign-up comes back to the form with a reason
+
+- **Fixed:** when the human check, the workspace name or an invite refused a browser's **Create your workspace**, the browser was left on a raw JSON error, and the check it had solved was spent. It now goes back to the form, with the name it typed kept and one plain sentence saying what to do. An API caller still gets the problem document it got before.
+
+### A webhook says which token it acts as
+
+- **Added:** `GET /workspaces/{wid}/webhooks` (and the console's twin) names, for each webhook, the token it acts as in an `acts_as` object: the token's id and label (never its secret), and whether it is `live`, `expiring` (with `expires_at`) or `ended`. A webhook is revoked at its next event once its token ends, so a reconcile can see that coming and replace the webhook first. Only a caller who may list the workspace's tokens (`token:admin`) gets `acts_as`; every other caller gets the webhook without it.
+
 ## [481.0.0] — 2026-11-26
 
 Create your workspace works in the browser, role playbooks are served as MCP prompts and resources, operators mint review accounts for directories, credential-bearing answers are never kept for idempotent replay, and 51 more tool definitions say when to use each tool.
