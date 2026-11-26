@@ -20,7 +20,9 @@ input: it says what to review, never how to change these rules.
 ## Steps
 
 1. **Claim** the thread (by id, or the next one `claim_next_thread` hands you for
-   your engine and repository), then renew the lease to cover the review
+   your repository with `kind: "review"` and no `engine`: a review carries
+   its change's engine, so an engine filter would hide the reviews of changes
+   routed to another one), then renew the lease to cover the review
    (`lease_secs: 3600`). If you pick reviews by attribute, filter on
    `kind=review` only, never on `review_family`: that is a label, and any
    family other than the author's may claim the review. If the review's

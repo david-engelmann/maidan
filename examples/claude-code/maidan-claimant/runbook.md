@@ -419,7 +419,17 @@ Then go back to step 1 for the next task, or stop if the person asked you to.
 ## 7. Follow-ups: fix first
 
 A thread sent back with `change_requests`, or one whose previous result names
-a branch, is a follow-up. Before anything else on it:
+a branch, is a follow-up. Before anything else on it, read the previous
+result's `branch` and pick the case:
+
+- It is a `feature/agent-*` branch: Maidan wrote it, and the numbered steps
+  below apply.
+- It is a branch of your own, one the fallback in section 5 pushed (for
+  example `session/retry-the-bridge`; `feature/agent-<slug>` was never pushed):
+  fetch that branch (`git fetch origin <branch>`) and check it out. Fix what
+  the notes ask as new commits on top, run the gate, push them with a plain
+  `git push`, and set a plain result the way the fallback does. Skip the
+  numbered steps: they fetch and deliver through a branch that does not exist.
 
 1. Fetch the branch Maidan wrote: `git fetch origin feature/agent-<slug>` and
    check it out. The new `base_sha` is its head, `git rev-parse HEAD`, read
@@ -431,8 +441,6 @@ a branch, is a follow-up. Before anything else on it:
 3. Run the gate, then deliver as in step 5 with the same `branch` and
    `deliver_to`: Maidan commits on top of the head and finds the pull request
    already open.
-4. For a fallback pull request, push the new commits to the same branch with
-   a plain `git push`.
 
 Answer each note on the thread: what you changed, or why not.
 
