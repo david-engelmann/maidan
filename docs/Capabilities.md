@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v482.0.0](https://github.com/david-engelmann/maidan/releases/tag/v482.0.0) — the example skills' five review findings are fixed, and 3 more
+
+A refused sign-up returns to the form with a reason, a review's PASS never hides another reviewer's FIX-FIRST, the webhook list says which token each webhook acts as, and the example skills carry their five review fixes.
+
+- The example skills' five review findings are fixed
+- A review's PASS never hides another reporter's FIX-FIRST
+- A refused sign-up comes back to the form with a reason
+- A webhook says which token it acts as
+
+`CHANGELOG.md` under `[482.0.0]` has every entry.
+
 ## [v481.0.0](https://github.com/david-engelmann/maidan/releases/tag/v481.0.0) — role playbooks are served over MCP, and 3 more
 
 Create your workspace works in the browser, role playbooks are served as MCP prompts and resources, operators mint review accounts for directories, credential-bearing answers are never kept for idempotent replay, and 51 more tool definitions say when to use each tool.
