@@ -142,6 +142,22 @@ checks this table against the server's values.
 | `resources/read` of `maidan://boots/{channel_id}` | 60000 | `private` | The workspace boot for a channel. It changes when the glossary or an accepted decision changes, not when a thread is claimed. Private because access is per caller. |
 | `resources/read` of `maidan://threads/{id}` | 0 | `private` | Changes with every post, claim and transition. |
 | `resources/read` of `maidan://digests/{thread_id}` | 0 | `private` | The pointer to a thread's current digest. It moves when a newer digest is linked; the bytes it names are `maidan://artifacts/{sha256}`, cached by hash. |
+| `resources/read` of `maidan://playbooks/{role}` | 3600000 | `private` | A role playbook, compiled into the binary, so it changes only with a release. Private like every read. |
+
+### Role playbooks
+
+The Claude Code skills under `examples/claude-code/maidan-<role>/SKILL.md` say
+how the tools fit together for one job (claimant, reviewer, dispatcher and so
+on). A client that is not Claude Code never sees those files, so the server
+compiles the same files in and serves each as a prompt named `playbook_<role>`
+(`prompts/list`, `prompts/get`, no arguments) and as a markdown resource at
+`maidan://playbooks/<role>` (`resources/list`, `resources/read`). One edit to a
+skill updates both. They are the same for every caller, need only the
+`workspace:read` that `prompts/get` and `resources/read` already ask for, and are
+served on `/mcp/worker`, `/mcp/reviewer` and `/mcp/coordinator` too: a profile
+narrows `tools/list` and `tools/call`, not what a client may read. The
+`initialize` and `server/discover` instructions name them. A new skill needs an
+entry in `crates/maidan-mcp/src/playbooks.rs`, and a test fails until it has one.
 
 ---
 

@@ -5,6 +5,8 @@
 //! - `maidan://boots/{channel_id}` — the workspace boot for a channel.
 //! - `maidan://threads/{id}` — full thread transcript (up to 100 messages).
 //! - `maidan://digests/{thread_id}` — the thread's current digest (C10).
+//! - `maidan://playbooks/{role}` — a role playbook, the same text for every
+//!   caller ([`crate::playbooks`]); listed, so it is not a template.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -65,16 +67,19 @@ pub fn templates() -> Vec<Value> {
     .collect()
 }
 
-/// Concrete resources for `resources/list`: the caller's own workspace, the one
-/// resource that exists without the caller naming an id. Everything else is
-/// reached through [`templates`].
+/// Concrete resources for `resources/list`: the caller's own workspace, which
+/// comes first (a client may take the first entry as the one to read), then
+/// the role playbooks, which need no id either. Everything else is reached
+/// through [`templates`].
 pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
-    vec![json!({
+    let mut listed = vec![json!({
         "uri": format!("{URI_PREFIX}workspaces/{}", auth.workspace_id().0),
         "name": "workspace",
         "description": "Your workspace's metadata.",
         "mimeType": "application/json",
-    })]
+    })];
+    listed.extend(crate::playbooks::resources());
+    listed
 }
 
 /// Read a resource for `auth`. An artifact's metadata is the caller's workspace's
@@ -88,6 +93,8 @@ pub async fn read(
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
+        // Static text, the same for every caller: nothing of the store's.
+        crate::playbooks::RESOURCE_KIND => return crate::playbooks::read(id_str),
         "artifacts" => {
             // Same decoder as `validate_uri`: uppercase hex is a real digest,
             // stored and queried in canonical lowercase.
