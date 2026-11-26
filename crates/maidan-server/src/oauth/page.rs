@@ -100,6 +100,7 @@ pub(super) fn describe(capability: &str) -> &str {
     match capability {
         c::WORKSPACE_READ => "Read channels, threads, messages and files",
         c::WORKSPACE_WRITE => "Create and change channels, threads and tasks",
+        c::MEMBER_SELF => "Change your own follows, mutes, notifications and email",
         c::MESSAGE_POST => "Post messages and replies",
         c::THREAD_TRANSITION => "Move tasks through review and done",
         c::ARTIFACT_UPLOAD => "Upload files",
@@ -151,6 +152,16 @@ mod tests {
         // the element would make browsers drop the style.
         let page = render("t", "", "");
         assert!(page.contains(&format!("<style>{CSS}</style>")));
+    }
+
+    #[test]
+    fn every_capability_an_app_can_ask_for_reads_as_a_sentence() {
+        // An app's scope can name any delegatable capability, and a person
+        // approving it would otherwise see the bare string (member:self once
+        // read as itself, twice over, on the live consent page).
+        for capability in maidan_auth::capability::delegatable() {
+            assert_ne!(describe(&capability), capability, "{capability}");
+        }
     }
 
     #[test]
