@@ -1205,6 +1205,8 @@ fn requires_credential(op: &Operation) -> bool {
         MintPeerResponse,
         CreateWebhook,
         WebhookResponse,
+        WebhookActsAs,
+        WebhookTokenStatus,
         MintWebhookResponse,
         CreateSlashCommand,
         SlashCommandResponse,

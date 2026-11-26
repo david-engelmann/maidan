@@ -7,7 +7,7 @@ use axum::{extract::State, http::StatusCode, Extension, Json};
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     decrypt_peer_secret_rotating, encrypt_peer_secret, AuthContext, TokenSecret,
 };
 use maidan_types::{
@@ -19,7 +19,8 @@ use sha2::Sha256;
 use utoipa::ToSchema;
 
 use crate::dto::{
-    CreateWebhook, MentionWebhookConfig, MintWebhookResponse, SetMentionWebhook, WebhookResponse,
+    CreateWebhook, MentionWebhookConfig, MintWebhookResponse, SetMentionWebhook, WebhookActsAs,
+    WebhookResponse, WebhookTokenStatus,
 };
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath};
@@ -206,16 +207,90 @@ pub async fn list_webhooks(
     let workspace_id = WorkspaceId(workspace_id);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    list(&state, workspace_id).await
+    list(&state, &auth, workspace_id).await
 }
 
-/// The workspace's webhooks. The caller has already been allowed to.
+/// The workspace's webhooks. The caller has already been allowed to. A caller
+/// who may list the workspace's tokens also sees which token each webhook
+/// acts as; anyone else gets the webhook alone.
 pub(crate) async fn list(
     state: &AppState,
+    auth: &AuthContext,
     workspace_id: WorkspaceId,
 ) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
-    Ok(Json(subs.into_iter().map(WebhookResponse::from).collect()))
+    let sees_tokens = auth.require_capability(TOKEN_ADMIN).is_ok();
+    let mut out = Vec::with_capacity(subs.len());
+    for sub in subs {
+        let acts_as = if sees_tokens {
+            Some(webhook_acts_as(state, &sub).await?)
+        } else {
+            None
+        };
+        let mut response = WebhookResponse::from(sub);
+        response.acts_as = acts_as;
+        out.push(response);
+    }
+    Ok(Json(out))
+}
+
+/// The token `sub` acts as and whether it still can, judged by the check the
+/// delivery worker makes before it sends, so a reader sees an ending the
+/// worker is about to act on.
+async fn webhook_acts_as(state: &AppState, sub: &WebhookSubscription) -> ApiResult<WebhookActsAs> {
+    let created_by_token = state
+        .store
+        .get_webhook_subscription(sub.id)
+        .await?
+        .created_by_token;
+    let Some(token_id) = created_by_token else {
+        return Ok(WebhookActsAs {
+            token_id: None,
+            label: None,
+            status: WebhookTokenStatus::Ended,
+            expires_at: None,
+        });
+    };
+    // A token of another workspace is never described here, however the
+    // webhook came to name it.
+    let token = match state.store.get_api_token(token_id).await {
+        Ok(token) if token.workspace_id == sub.workspace_id => Some(token),
+        Ok(_) | Err(maidan_store::StoreError::NotFound) => None,
+        Err(err) => return Err(err.into()),
+    };
+    let Some(token) = token else {
+        return Ok(WebhookActsAs {
+            token_id: Some(token_id),
+            label: None,
+            status: WebhookTokenStatus::Ended,
+            expires_at: None,
+        });
+    };
+    let status = match crate::registration_owner::creator_authority(
+        state,
+        Some(token_id),
+        sub.workspace_id,
+        WORKSPACE_ADMIN,
+    )
+    .await
+    {
+        Err(crate::registration_owner::NotActing::Ended(_)) => WebhookTokenStatus::Ended,
+        // A check that could not finish does not end the webhook: the worker
+        // holds it that time and tries again, so it reads as not ended.
+        Ok(_) | Err(crate::registration_owner::NotActing::Held(_)) => {
+            if token.expires_at.is_some() {
+                WebhookTokenStatus::Expiring
+            } else {
+                WebhookTokenStatus::Live
+            }
+        }
+    };
+    Ok(WebhookActsAs {
+        token_id: Some(token_id),
+        label: token.label,
+        status,
+        expires_at: token.expires_at,
+    })
 }
 
 pub async fn get_mention_webhook(
