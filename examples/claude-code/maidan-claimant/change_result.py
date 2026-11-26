@@ -73,20 +73,28 @@ def git(repo_dir, *args):
         "diff.noprefix=false",
         "-c",
         "diff.mnemonicPrefix=false",
+        # `diff.relative` drops the checkout subdirectory from every path (and
+        # hides changes outside it), so a file the server would create at
+        # `sub/new.txt` arrives as `new.txt`.
+        "-c",
+        "diff.relative=false",
         *args,
     ]
+    # Bytes, decoded by hand: text mode would turn every CRLF into LF, and
+    # Maidan matches the old side of each hunk byte for byte and writes the
+    # new side as sent.
     try:
-        done = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8", timeout=GIT_TIMEOUT_SECS
-        )
+        done = subprocess.run(cmd, capture_output=True, timeout=GIT_TIMEOUT_SECS)
     except subprocess.TimeoutExpired:
         raise Stop(FIX, f"git {' '.join(args)} did not finish in {GIT_TIMEOUT_SECS} s")
+    if done.returncode != 0:
+        stderr = done.stderr.decode("utf-8", errors="replace").strip()
+        raise Stop(FIX, f"git {' '.join(args)}: {stderr}")
+    try:
+        return done.stdout.decode("utf-8")
     except UnicodeDecodeError:
         # The envelope is JSON text; a diff that is not UTF-8 cannot ride in it.
         raise Stop(FALLBACK, f"git {' '.join(args)} printed bytes that are not UTF-8")
-    if done.returncode != 0:
-        raise Stop(FIX, f"git {' '.join(args)}: {done.stderr.strip()}")
-    return done.stdout
 
 
 def resolve(repo_dir, rev):

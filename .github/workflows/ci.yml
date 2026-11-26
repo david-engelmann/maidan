@@ -244,6 +244,11 @@ jobs:
         # coordinator session sleeps on must wake for what needs it and only
         # that, and never print its token.
         run: python3 scripts/test-coordinator-wake.py
+      - name: change result helper (throwaway git repositories)
+        # Standard library and git, a few seconds: the diff a session sends
+        # must keep CRLF line endings and repository-root paths whatever the
+        # user's git config says.
+        run: python3 scripts/test-change-result.py
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
       - name: no unsafe code outside the listed sites

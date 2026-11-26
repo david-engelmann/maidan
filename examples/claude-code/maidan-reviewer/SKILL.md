@@ -68,7 +68,10 @@ For each thread:
 
 If the result is a pull request, review the code at the head SHA the result
 names (`head_sha`), in a detached worktree. A verdict on a head nobody will
-merge is noise: if the pull request moved, say so and review the new head.
+merge is noise. If the pull request moved, say so on the thread and ask the
+worker to send a result for the new head. Review it only after you fetch a new
+`get_review_packet`: a verdict on the new head sent with the old packet's
+`evidence_root` and evidence would not be about the handoff you read.
 
 ## 3. Decide
 
