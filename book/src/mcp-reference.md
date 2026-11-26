@@ -117,7 +117,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_workspace_handle`
 
-**Set workspace handle.** Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.
+**Set workspace handle.** Set or rename a workspace's handle, a human-readable alias, and return {workspace_id, handle, created_at, updated_at}. The handle is only a display label: the workspace UUID and maidan:// URIs stay unchanged and nothing resolves a handle to a workspace. A handle already used by another workspace is refused as a conflict. Read the current handle with get_room. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -127,9 +127,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "handle": {
+      "description": "The new handle: 1 to 64 characters, starting with a lowercase letter and containing only lowercase letters, digits and hyphens, with no double hyphen, no trailing hyphen and not shaped like a UUID. It must not be in use by another workspace.",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of the workspace to name. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -228,7 +230,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `create_delegation_grant`
 
-**Create delegation grant.** Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.
+**Create delegation grant.** Create an expiring grant that lets one workspace member (the delegate) act for another (the subject) with a fixed set of capabilities, for a stated purpose. The grant is only the authority: the delegate then calls delegate_token with the returned grant id to mint a token of at most one hour that acts as the subject. revoke_delegation_grant ends a grant and list_delegation_grants lists them. Only delegatable capabilities are accepted (workspace:read, workspace:write, member:self, message:post, thread:transition, artifact:upload, search:query, event:subscribe), subject and delegate must be different live members of the workspace, and expires_at must be within the workspace's grant ceiling (90 days unless set_delegation_policy changed it). Returns the grant {id, workspace_id, subject_id, delegate_id, capabilities, purpose, authorized_by, expires_at, revoked_at, created_at} and writes an audit record. Requires token:admin.
 
 **Capability:** `token:admin`
 
@@ -238,27 +240,33 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "capabilities": {
+      "description": "Capability names the grant carries, at least one, each from workspace:read, workspace:write, member:self, message:post, thread:transition, artifact:upload, search:query or event:subscribe. Any other name is refused.",
       "items": {
         "type": "string"
       },
       "type": "array"
     },
     "delegate_id": {
+      "description": "UUID of the member who may act for the subject. Must differ from subject_id.",
       "format": "uuid",
       "type": "string"
     },
     "expires_at": {
+      "description": "RFC 3339 instant when the grant ends. Must be in the future and no later than the workspace's grant ceiling allows (90 days from now by default).",
       "format": "date-time",
       "type": "string"
     },
     "purpose": {
+      "description": "Why the grant exists, 1 to 1000 bytes after trimming. Stored on the grant and in its audit record.",
       "type": "string"
     },
     "subject_id": {
+      "description": "UUID of the member the delegate will act for.",
       "format": "uuid",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of your own workspace (the workspace_id from whoami). Another workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -510,7 +518,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `add_channel_member`
 
-**Add channel member.** Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.
+**Add channel member.** Add a member to a channel, or change the role of one who is already in it: an existing member is overwritten with the role you pass, and omitting role sets member, which demotes a current admin. Use it to seat someone in a private channel; list_channel_members shows the roster and remove_channel_member takes someone out. The channel and the member must both be in your workspace, and a private channel is reachable only by its members. Returns the membership {channel_id, member_id, role, created_at} and writes a channel_member.add audit record. Requires channel:admin.
 
 **Capability:** `channel:admin`
 
@@ -520,15 +528,18 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to add the member to. It must be in your workspace.",
       "format": "uuid",
       "type": "string"
     },
     "member_id": {
+      "description": "UUID of the member to add. The member must belong to the channel's workspace.",
       "format": "uuid",
       "type": "string"
     },
     "role": {
       "default": "member",
+      "description": "member (the default, an ordinary participant) or admin (can manage the channel's membership). Applied to an existing member too, so omitting it on a current admin sets them back to member.",
       "enum": [
         "member",
         "admin"
@@ -546,7 +557,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_channel_members`
 
-**List channel members.** List the members of a channel. Requires channel:admin.
+**List channel members.** List a channel's explicit membership rows, oldest first, each as channel_id, member_id, role (member or admin) and created_at. Membership rows are what gate a private channel; a public channel is open to the whole workspace and is not required to have any. Use add_channel_member and remove_channel_member to change the list. The channel must be in the caller's workspace. Requires channel:admin.
 
 **Capability:** `channel:admin`
 
@@ -556,6 +567,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel whose members to list. It must belong to the caller's workspace, otherwise the call returns not found.",
       "format": "uuid",
       "type": "string"
     }
@@ -569,7 +581,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `remove_channel_member`
 
-**Remove channel member.** Remove a member from a channel. Requires channel:admin.
+**Remove channel member.** Delete a member's membership row from a channel, which is what gates access to a private channel, and write a channel_member.remove audit record. It returns {ok: true} even when the member held no row. The member must belong to the channel's workspace, otherwise the call returns not found. To add or re-role a member use add_channel_member, and to see current members use list_channel_members. Requires channel:admin.
 
 **Capability:** `channel:admin`
 
@@ -579,10 +591,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to remove the member from. It must belong to the caller's workspace.",
       "format": "uuid",
       "type": "string"
     },
     "member_id": {
+      "description": "UUID of the member whose membership row to delete. It must be a member of the same workspace as the channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -820,7 +834,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_child_threads`
 
-**List child threads.** A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.
+**List child threads.** List a parent thread's child threads, oldest first, each as a thread object plus message_count, the number of its live messages. This gives a threaded view of N replies per child without loading any child's messages; tombstoned children are excluded. To read the messages inside a child, call list_messages with the child's id. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -830,7 +844,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
-      "description": "The parent thread id.",
+      "description": "UUID of the parent thread whose children to list. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -1361,7 +1375,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_tool_transcript`
 
-**Get tool transcript.** A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.
+**Get tool transcript.** Read a thread's tool-call transcript: each tool_use block paired by id with its tool_result, in the order the calls were made, as entries with tool_use_id, name, input, the posting message and member, and the result (content and is_error) once one exists. Results whose call is outside the scanned window come back as orphan_results. Text and code blocks and message bodies are left out, which makes this much smaller than list_messages or get_thread_context when you only need what tools ran and what they returned. Tombstoned messages are skipped. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -1372,12 +1386,13 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   "properties": {
     "limit": {
       "default": 200,
-      "description": "max messages to scan",
+      "description": "How many of the thread's oldest messages to scan for tool blocks. Defaults to 200, from 1 to 500. A longer thread is cut off at this count, so later calls are not included.",
       "maximum": 500,
       "minimum": 1,
       "type": "integer"
     },
     "thread_id": {
+      "description": "UUID of the thread to read. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -1391,7 +1406,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `assign_thread`
 
-**Assign thread.** Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.
+**Assign thread.** Assign a thread to a member and hand it off, replacing any current holder: the new assignee gets a fresh claim_lease_id with no lease deadline and a reset working clock. Use claim_thread to take an unassigned thread yourself (it refuses when someone holds it) and unassign_thread to clear the assignee. Emits thread_assignment_changed carrying the previous assignee and your optional note, and returns the updated thread. The assignee must belong to the thread's workspace, and the call is refused for a review whose change the assignee's own model family wrote. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -1401,15 +1416,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "assignee_id": {
-      "description": "member to assign the thread to",
+      "description": "UUID of the member to hand the thread to. The member must belong to the thread's workspace; the current assignee, if any, is replaced.",
       "format": "uuid",
       "type": "string"
     },
     "note": {
-      "description": "optional handoff note for the assignee",
+      "description": "Handoff text delivered to subscribers on the thread_assignment_changed event. Omitted, the event carries no note.",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to assign. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -1424,7 +1440,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `claim_thread`
 
-**Claim thread.** Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.
+**Claim thread.** Claim one specific thread by id, succeeding only when nobody holds it: returns {thread, claimed}, with claimed=false when it is already assigned (to anyone, you included). Use it when you already know which thread to take; use claim_next_thread or claim_next_workspace_thread to be handed the best available work instead. The claim carries no lease deadline, so it does not lapse: give it up with release_claim, and the returned thread's claim_lease_id is the fencing token that release_claim and set_thread_result ask for. Refused for an ended thread, a thread parked with mark_unclaimable or blocked with set_thread_block, and when you are at the workspace's work-in-progress limit; a successful claim emits thread_assignment_changed. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -1434,6 +1450,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread to claim. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -1542,7 +1559,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_assigned_threads`
 
-**List assigned threads.** List the threads currently assigned to a member (their work queue), oldest first.
+**List assigned threads.** List the live threads currently assigned to one member, oldest first: that member's work queue. Each item is a full thread. Threads the caller cannot read are left out, so the list can be shorter than the member's real queue. It covers any member of the caller's workspace; for what a member must act on beyond assignments (requested reviews, open approval gates, mentions) use get_waiting_inbox, and for a count against the WIP limit use get_member_wip. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -1552,6 +1569,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose assigned threads to list. It must belong to the caller's workspace, otherwise the call returns not found.",
       "format": "uuid",
       "type": "string"
     }
@@ -1630,7 +1648,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_wait`
 
-**Get wait.** The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).
+**Get wait.** Read the wait timer on one thread: an object with wait_until, on_timeout (notify or park), an optional reason, created_by, created_at and fired_at, or null when no wait is set. fired_at is empty until the sweeper has escalated the wait after wait_until passed. This only reads the timer; to set or remove it use set_wait or cancel_wait, and to block until an event happens use a wait_for_* tool. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -1640,6 +1658,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose wait timer to read. A thread has at most one wait. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -1845,7 +1864,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_thread_block`
 
-**Get thread block.** The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.
+**Get thread block.** Read the explicit dispatch block on one thread: an object with thread_id, reason, set_by, set_at and an optional note, or null when the thread is not blocked. While a block exists, claim_next_thread skips the thread and an explicit claim is refused. To see every blocked thread in a channel use list_blocked_threads; to place or lift a block use set_thread_block or clear_thread_block. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -1855,6 +1874,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose block to read. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -1891,7 +1911,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_blocked_threads`
 
-**List blocked threads.** The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).
+**List blocked threads.** List the threads in one channel that carry an explicit block, newest first, each as thread_id, reason (dag, gate, human, child, quota or unclaimable), set_by, set_at and an optional note. These are blocks placed with set_thread_block. Stalls that only get_queue_depth counts, such as an unfinished dependency, a pending approval gate or a footprint conflict, do not appear here. For threads parked from dispatch use list_unclaimable. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -1901,6 +1921,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel whose explicitly blocked threads to list. The caller must be able to read the channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -2451,7 +2472,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `claim_next_thread`
 
-**Claim next thread.** Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).
+**Claim next thread.** Claim the next piece of work in one channel: the claimable thread with the highest priority (aged up by hours waited), oldest first among equals, leased to you. Use claim_next_workspace_thread to draw from every channel you can read in one call, and claim_thread to take one thread you already know by id. Claimable means open, unassigned or its lease lapsed, dependencies finished, skills held, no pending approval gate, not parked or blocked, and you not frozen. Returns the thread with its claim_lease_id (the fencing token that renew_claim, acknowledge_claim and release_claim ask for), its attributes and a content-addressed pin {uri, content_hash}, or null when nothing is claimable or you are at the workspace's work-in-progress limit; taking over a lapsed lease emits claim_expired for the dead holder, and every claim emits thread_assignment_changed. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -2461,6 +2482,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to claim from. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
@@ -2510,7 +2532,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `claim_next_workspace_thread`
 
-**Claim next workspace thread.** Atomically claim the oldest claimable thread across every channel of the workspace you may read (claim_next_thread for the whole workspace), so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.
+**Claim next workspace thread.** Claim the next piece of work across every channel of your workspace that you may read, in one call: the same selection, filters, lease and result as claim_next_thread, without the channel argument. Use claim_next_thread to draw from one channel only, claim_thread to take one thread by id, and get_workspace_queue_depth to count ready work before you ask. With wait_ms set and nothing claimable it holds the call open until work becomes claimable and claims it, so a worker needs no polling loop. A private channel's threads go only to its members and a DM's only to its participants. Returns the thread with its claim_lease_id, attributes and pin {uri, content_hash}, or null when nothing is claimable or you are at the workspace's work-in-progress limit. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -3178,7 +3200,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_queue_depth`
 
-**Get queue depth.** A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.
+**Get queue depth.** Count one channel's open task threads as {open, ready, assigned, blocked, unclaimable}, to decide whether to add or remove workers. The counts partition open: ready is what claim_next_thread could hand out now, assigned is held by an assignee with a live lease, blocked is stalled on an explicit block, an unfinished dependency, a pending approval gate or a footprint conflict, and unclaimable is withheld until someone acts (parked, at its budget, or already holding a result). Use get_workspace_queue_depth for every channel of the workspace, and get_channel_occupancy for the same channel when you need held work split into claimed and working. Counts only threads you may read; on the DM channel, your own DMs. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3188,6 +3210,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to count. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -3201,7 +3224,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_channel_occupancy`
 
-**Get channel occupancy.** A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.
+**Get channel occupancy.** Split one channel's open task threads into {open, queued, claimed, working, blocked} by what the holder is doing: claimed is held but not yet acknowledged with acknowledge_claim, and working is held and acknowledged, so a claimed count that stays high exposes an agent that took work and never started it. queued equals the ready count of get_queue_depth, and blocked is that tool's blocked plus unclaimable; the four buckets add up to open. Use get_queue_depth for the pool-sizing counts of the same channel, get_workspace_occupancy for the same split across the whole workspace, and get_run_occupancy for the threads of one producer run. Counts only threads you may read. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3211,6 +3234,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
+      "description": "UUID of the channel to count. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -3224,7 +3248,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_queue_depth`
 
-**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo, engine and kind narrow the count as they narrow claim_next_workspace_thread. claimable_by: me counts only the threads claim_next_workspace_thread would hand you: reviews of your own model family's changes, threads you declined as your family's, threads needing a skill you lack, and everything while you are frozen are left out, so a seat can wake only when its own ready is above 0.
+**Get workspace queue depth.** Count open task threads across every channel of your workspace that you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of get_queue_depth over those channels, with the same field meanings. Use it to size a pool of workers that claim with claim_next_workspace_thread; use get_queue_depth for one channel, and get_workspace_occupancy for the claimed and working split. repo, engine and kind narrow the count exactly as they narrow claim_next_workspace_thread. With claimable_by set to me, only threads claim_next_workspace_thread would hand you count: reviews of your own model family's changes, threads you declined as your family's, threads needing a skill you lack, and everything while you are frozen are left out, so a seat can wake only when its own ready is above 0. A private channel's threads count only for its members and a DM's only for its participants. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3263,7 +3287,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "workspace_id": {
-      "description": "your own workspace (whoami's workspace_id)",
+      "description": "UUID of your own workspace (the workspace_id from whoami). Another workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -3484,7 +3508,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_event`
 
-**Wait for event.** Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.
+**Wait for event.** Block until the first event of any of the listed kinds arrives in your workspace (or in one thread) and return {log_id, event}, or null when timeout_ms lapses. Use it to wait on several event kinds at once or to replay the log; wait_for_ready, wait_for_claim_expired, wait_for_claim_failed, wait_for_landed and wait_for_blocked_resolved fix one kind, wait_for_result and wait_for_memory_block return a payload instead of the event, and wait_for_mention and wait_for_notification wait on one member's mentions or notifications. Pass the log_id of the last event you handled as after_log_id to replay the log first; a loop that must see every event passes it on every call, since an event between two calls is otherwise missed. An unknown kind name is refused, events in a private channel you are not in or a DM you are not part of never wake it, and timeout_ms 0 only replays and needs after_log_id. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3494,11 +3518,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "after_log_id": {
-      "description": "replay logged events after this log_id before waiting",
+      "description": "Replay logged events with a log_id greater than this before waiting; pass the log_id of the last event you handled. Required when timeout_ms is 0.",
       "type": "integer"
     },
     "kinds": {
-      "description": "event kind names in snake_case",
+      "description": "Event kind names in snake_case, at least one, such as thread_landed, thread_ready or message_posted. The first event of any listed kind wakes the call; an unknown name is refused.",
       "items": {
         "type": "string"
       },
@@ -3506,18 +3530,18 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "array"
     },
     "thread_id": {
-      "description": "only events in this thread",
+      "description": "UUID of a thread; only events in it count. Omitted, events anywhere in the workspace that you may read.",
       "format": "uuid",
       "type": "string"
     },
     "timeout_ms": {
-      "description": "how long to wait (default 30000)",
+      "description": "Wait window in milliseconds, up to 300000 (default 30000). 0 only replays the log and needs after_log_id.",
       "maximum": 300000,
       "minimum": 0,
       "type": "integer"
     },
     "workspace_id": {
-      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "description": "UUID of your own workspace (the workspace_id from whoami); omitted, your own. Another workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -3704,7 +3728,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_run_occupancy`
 
-**Get run occupancy.** Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.
+**Get run occupancy.** Count the open threads that share one producer run id, as {parent_run_id, open, queued, claimed, working, blocked}: the split of get_channel_occupancy applied to every thread in your workspace whose lineage names that run, across channels. Use it to watch the nested work of one orchestrated run; attach the run id to a thread with set_thread_lineage and list those threads with list_run_threads. Counts only threads you may read and includes muted ones, and a run id that no thread uses returns zeros, not an error. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3714,7 +3738,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "parent_run_id": {
-      "description": "the producer's run identifier",
+      "description": "The producer's run identifier, exactly as it was stored on threads with set_thread_lineage. Surrounding whitespace is ignored; an empty value or one over 256 bytes is refused.",
       "type": "string"
     }
   },
@@ -3917,7 +3941,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_thread_steer`
 
-**Set thread steer.** Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.
+**Set thread steer.** Set a thread's persisted steer, the durable guidance a resuming or newly assigned agent should follow, replacing any earlier steer (the latest write wins), and return {thread_id, steer, steered_by, steered_at} with the caller as steered_by. The steer stays on the thread across claims and handoffs and emits no event; a reader picks it up with get_thread_steer. Use it for standing guidance rather than a one-off reply, which belongs in a message. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -3927,10 +3951,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "steer": {
-      "description": "the steering instruction",
+      "description": "The steering instruction as plain text. It replaces the thread's current steer in full.",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to steer. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -3968,7 +3993,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_result`
 
-**Wait for result.** Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.
+**Wait for result.** Block until the task named by thread_id produces its result (thread_result_set) and return the result record {thread_id, result, produced_by, produced_at}, or null when the timeout lapses; this is the wait in spawn, wait, aggregate. Unlike the event waits it returns the stored result rather than an event, and it needs a thread_id. A live wait does not see a result that already exists: read it with get_thread_result first, or use get_dependency_results for every dependency result of a parent at once. since_log_id replays a result set on this thread after that log_id before waiting live. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -3978,15 +4003,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "thread_id": {
+      "description": "UUID of the task thread whose result to await. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
     "timeout_ms": {
-      "description": "wait window ms (default 30000, clamped 1000-300000)",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "type": "integer"
     }
   },
@@ -4213,7 +4239,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_recipes`
 
-**List recipes.** List the caller's workspace recipes (filtered to channels the caller can access).
+**List recipes.** List the recipes in the caller's workspace, newest first, leaving out any recipe whose channel the caller cannot read. Each recipe carries id, workspace_id, channel_id, name, its spec (params, definition of done, retry policy and child sub-tasks), created_by and timestamps. Pass a recipe id to instantiate_recipe to build its threads, or to delete_recipe to remove it. Takes no arguments. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -4705,7 +4731,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_kind_census`
 
-**Get kind census.** EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.
+**Get kind census.** Count the events in the workspace's event log by event kind, as {workspace_id, total, counts} where counts lists {kind, count} ordered by count descending then kind, and kinds with no events are left out. It answers what has happened (messages posted, claims expired, threads landed), not how much work is queued: use get_queue_depth or get_channel_occupancy for queue state. Optionally narrowed to one channel or one thread; there is no time window, and events on threads you may not read, including private channels you are not in, are excluded from the totals. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -4715,17 +4741,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional channel scope; gated when present",
+      "description": "UUID of a channel; count only events in it. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
-      "description": "optional thread scope; gated when present",
+      "description": "UUID of a thread; count only events in it. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     },
     "workspace_id": {
-      "description": "defaults to the caller's workspace",
+      "description": "UUID of your own workspace; omitted, your own. Another workspace is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -4797,7 +4823,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_memory_blocks`
 
-**List memory blocks.** List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).
+**List memory blocks.** List every memory block in the caller's workspace, ordered by label, as a list of objects with id, workspace_id, label, description (omitted when unset), char_limit (omitted when unset), read_only, value, owner_id, revision, created_at and updated_at. All blocks come back at once with their full values, with no paging or limit, so the result can be large. To read one block by label use get_memory_block; to see only the blocks attached to a thread use list_thread_memory_blocks. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -4844,7 +4870,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `attach_memory_block`
 
-**Attach memory block.** Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.
+**Attach memory block.** Attach a memory block, named by label, to a thread so the thread carries it as a shared object: how a parent hands a block to a child. Returns {attached: true} when newly attached and {attached: false} when it was already attached. The block must already exist in your workspace (create_memory_block makes one; an unknown label is refused), and attaching never changes its value. list_thread_memory_blocks shows what a thread carries and detach_memory_block removes the link. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -4854,9 +4880,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "label": {
+      "description": "Label of an existing memory block in your workspace (surrounding whitespace is ignored). An unknown label is refused.",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to attach the block to. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -4871,7 +4899,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `detach_memory_block`
 
-**Detach memory block.** Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).
+**Detach memory block.** Remove a memory block's attachment from one thread, identified by block id. The block and its value stay in the workspace and other threads keep it; delete_memory_block deletes the block itself and attach_memory_block is the opposite call. Returns {detached: true}, or {detached: false} when the block was not attached, so repeating the call is safe. Get block ids from list_thread_memory_blocks. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -4881,10 +4909,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "block_id": {
+      "description": "UUID of the memory block (its id field, as list_thread_memory_blocks returns it), not its label.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to detach the block from. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -4923,7 +4953,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_memory_block`
 
-**Wait for memory block.** Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.
+**Wait for memory block.** Block until the memory block with the given label is rewritten and return the block with its fresh value, or null when the timeout lapses. This is how a parent watches a child's result block; it sees only rewrites after it subscribes and has no log replay, so read the current value with get_memory_block first. Use wait_for_result to await a task's result instead of a block, and wait_for_event for several event kinds. Scoped to your workspace. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -4933,10 +4963,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "label": {
+      "description": "Label of the memory block to watch, its workspace-unique name (surrounding whitespace is ignored).",
       "type": "string"
     },
     "timeout_ms": {
-      "description": "long-poll window (default 30000, clamped 1000-300000)",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "type": "integer"
     }
   },
@@ -4981,7 +5012,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `add_reviewer`
 
-**Add reviewer.** Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.
+**Add reviewer.** Name a member as an eligible reviewer for a thread. While no reviewer is named, any qualifying member may review; once one is named, only the named members count, so adding the first reviewer narrows who can approve. Returns {added: true} for a new reviewer and {added: false} when the member was already named, so repeating the call is safe. The member must be in your workspace. Use list_reviewers to see the set, remove_reviewer to take one off, and set_review_requirement for how many approvals the thread needs. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -4991,10 +5022,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member to name as a reviewer. The member must belong to your workspace.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to name a reviewer for. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -5327,7 +5360,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_ready`
 
-**Wait for ready.** Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.
+**Wait for ready.** Block until a task becomes ready, meaning its last blocking dependency reached a terminal state (thread_ready), and return the ThreadReady event, or null when the timeout lapses. It answers only that dependency signal: use wait_for_blocked_resolved for an explicit block being cleared, wait_for_claim_expired for a lapsed claim, wait_for_event for several kinds at once, and claim_next_thread to take ready work that already exists. Scoped to channel_id when given, else any thread you may read in the workspace. since_log_id replays a ThreadReady recorded after that log_id before waiting live; without it only readiness signalled after the call counts. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5337,17 +5370,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional: scope to one channel's tasks",
+      "description": "UUID of a channel; only readiness of its tasks counts. Omitted, any thread you may read in the workspace.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5359,7 +5392,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_claim_expired`
 
-**Wait for claim expired.** Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A thread in review is reaped like an open one: its implementer must keep renewing through review, or the claim is reaped (emitting claim_expired) and a changes-requested thread reopens unheld. To put a deadline on a thread instead, use set_wait.
+**Wait for claim expired.** Block until a claim's lease lapses and its thread is reclaimed (claim_expired), the signal that an agent holding work died or stopped renewing, and return the ClaimExpired event (member_id is the dead holder), or null when the timeout lapses. Use wait_for_claim_failed for a run stopped for going over its budget, and wait_for_event to wait on several kinds. The reclaim happens in the claim reaper within seconds, or in the next claim_next_thread. A thread in review is reaped like an open one: its implementer must keep renewing through review, or the claim is reaped and a changes-requested thread reopens unheld. Scoped to channel_id when given, else any thread you may read in the workspace; since_log_id replays an expiry recorded in the gap before this call subscribes. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5369,17 +5402,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional: scope to one channel's tasks",
+      "description": "UUID of a channel; only claim expiries of its tasks count. Omitted, any thread you may read in the workspace.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5391,7 +5424,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_claim_failed`
 
-**Wait for claim failed.** Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
+**Wait for claim failed.** Block until a claimed run is stopped for going over its budget (claim_failed) and return the ClaimFailed event (member_id is the stopped holder, reason the budget axis: tokens, usd, turns or wall), or null when the timeout lapses. A report_usage past a limit releases the claim, dead-letters the run and emits it; a reclaim whose worked time put the thread over budget emits it too. Use wait_for_claim_expired for a holder that died or stopped renewing instead, and wait_for_event to wait on several kinds. Scoped to channel_id when given, else any thread you may read in the workspace; since_log_id replays a stop recorded in the gap before this call subscribes. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5401,17 +5434,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional: scope to one channel's tasks",
+      "description": "UUID of a channel; only budget stops of its tasks count. Omitted, any thread you may read in the workspace.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5423,7 +5456,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_blocked_resolved`
 
-**Wait for blocked resolved.** Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.
+**Wait for blocked resolved.** Block until an explicit dispatch block on a thread is cleared (clear_thread_block emits blocked_resolved) and return the BlockedResolved event (the reason that cleared, resolved_by), or null when the timeout lapses. It answers only a cleared block, not a dependency finishing (wait_for_ready) or a lapsed claim (wait_for_claim_expired); get_thread_block reads the current block. Scoped to thread_id and/or channel_id when given, else any thread you may read in the workspace; clearing a thread that was not blocked emits nothing. since_log_id replays a clear recorded in the gap before this call subscribes. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5433,22 +5466,22 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional: scope to one channel's threads",
+      "description": "UUID of a channel; only blocks cleared on its threads count. Omitted, any thread you may read in the workspace.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "thread_id": {
-      "description": "optional: wait for this thread's block to clear",
+      "description": "UUID of a thread; wait for this thread's block to clear.",
       "format": "uuid",
       "type": "string"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5460,7 +5493,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_landed`
 
-**Wait for landed.** Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.
+**Wait for landed.** Block until a thread's linked GitHub pull request is merged (thread_landed) and return the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null when the timeout lapses. The workspace records the landing but does not change the thread's state; use wait_for_event to wait on several kinds, and wait_for_result for a task's result rather than a merge. Scoped to thread_id and/or channel_id when given, else any landing in the workspace that you may read; since_log_id replays a landing recorded in the gap before this call subscribes. To put a deadline on a thread instead, use set_wait. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5470,22 +5503,22 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "channel_id": {
-      "description": "optional: scope to one channel's threads",
+      "description": "UUID of a channel; only landings of threads in it count. Omitted, any thread you may read in the workspace.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "thread_id": {
-      "description": "optional: wait for this thread's PR to land",
+      "description": "UUID of a thread; only the landing of its linked pull request counts.",
       "format": "uuid",
       "type": "string"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5552,7 +5585,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `mark_inbox_read`
 
-**Mark inbox read.** Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox. Requires member:self.
+**Mark inbox read.** Move a member's mention inbox read-cursor forward to a given instant, so mentions at or before it count as read, and return the updated inbox: items (up to 50), unread_count and last_read_at. The cursor never moves backward, so an earlier instant than the current cursor changes nothing. This is the cursor for get_inbox; notifications are cleared with mark_notification_read or mark_all_notifications_read instead. The member_id must be the caller. Requires member:self.
 
 **Capability:** `member:self`
 
@@ -5562,10 +5595,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose inbox to advance. It must be the caller's own member id, otherwise the call is refused.",
       "format": "uuid",
       "type": "string"
     },
     "read_through": {
+      "description": "RFC 3339 timestamp, for example 2026-11-25T14:30:00Z. Mentions created at or before this instant are marked read. An instant earlier than the current cursor is ignored.",
       "format": "date-time",
       "type": "string"
     }
@@ -5580,7 +5615,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_mention`
 
-**Wait for mention.** Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).
+**Wait for mention.** Block until the member is next @mentioned (mention_recorded) and return the mention event, or null when the timeout lapses. member_id must be your own. Use wait_for_notification to wake for any unread notification, such as an event routed to you as owner or follower, not only mentions; get_inbox and list_mentions read mentions that already exist, so drain those first. since_log_id (your high-water log_id from the last drain) replays a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour. Mentions in a private channel or DM you cannot read are skipped. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5590,16 +5625,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose mentions to await. Must be your own member id; another member's id is refused.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "lookback anchor: replay the log for a matching event with log_id greater than this before parking live",
+      "description": "Your high-water log_id. The log is replayed for a matching event with a log_id greater than this before the wait goes live, so an event in the gap between two calls is caught. Omitted, only events after the call count.",
       "type": "integer"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -5856,7 +5892,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `wait_for_notification`
 
-**Wait for notification.** Block until the member has an unread notification of any kind (a mention, or an event routed to them as owner or follower), or the timeout lapses. Reads the notification ledger, so it also returns a row written while you were not waiting: pass since_log_id (the highest source_log_id you have seen) and it returns the oldest unread notification after it; omit it to wait for one newer than this call. Returns that notification with the thread's title and a short reason, or null on timeout. Never marks it read.
+**Wait for notification.** Block until you have an unread notification of any kind (a mention, or an event routed to you as owner or follower) and return it with the thread's title and a short reason, or null when the timeout lapses. Use wait_for_mention to wake on mentions only, and list_notifications to read what already waits. It reads the notification ledger, so with since_log_id (the highest source_log_id you have seen) it returns the oldest unread notification after it, including one written while you were not waiting; omitted, only notifications for events after the call count. It never marks the notification read; use mark_notification_read for that. member_id must be your own. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -5866,16 +5902,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the member whose notifications to await. Must be your own member id; another member's id is refused.",
       "format": "uuid",
       "type": "string"
     },
     "since_log_id": {
-      "description": "return the oldest unread notification whose source_log_id is greater than this, including one written before the call; omitted, only notifications for events after the call",
+      "description": "Return the oldest unread notification whose source_log_id is greater than this, including one written before the call. Omitted, only notifications for events after the call count.",
       "type": "integer"
     },
     "timeout_ms": {
       "default": 30000,
-      "description": "long-poll window in milliseconds",
+      "description": "Wait window in milliseconds, from 1 to 300000 (default 30000). When it lapses the tool returns null.",
       "maximum": 300000,
       "minimum": 1,
       "type": "integer"
@@ -6001,7 +6038,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_member_email`
 
-**Set member email.** Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send. Requires member:self.
+**Set member email.** Set the address a member's email notifications are delivered to, replacing any address already stored, and return {member_id, email, updated_at}. The value is trimmed and refused unless it contains an at sign and is at least 3 characters; deeper validation happens when mail is sent. Read the current address with get_member_email and clear it with delete_member_email. The member_id must be the caller. Requires member:self.
 
 **Capability:** `member:self`
 
@@ -6011,9 +6048,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "email": {
+      "description": "The delivery email address, for example agent@example.com. It is trimmed and must contain an at sign.",
       "type": "string"
     },
     "member_id": {
+      "description": "UUID of the member whose delivery email to set. It must be the caller's own member id, otherwise the call is refused.",
       "format": "uuid",
       "type": "string"
     }
@@ -6481,7 +6520,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `edit_message`
 
-**Edit message.** Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.
+**Edit message.** Rewrite your own message in place, keeping its id and author, with a new body, new typed content or new metadata. Only the author can edit: another member's message can be tombstoned with tombstone_message, not rewritten, and a tombstoned message cannot be edited. Omitted content and metadata keep their current values, and sending neither body nor content is refused. The edit emits a message_edited event, which reindexes the message for search; earlier versions stay readable with list_message_edits. Returns the updated message. Requires message:post.
 
 **Capability:** `message:post`
 
@@ -6503,11 +6542,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   ],
   "properties": {
     "body": {
-      "description": "plain text; omit when sending typed content (body is derived from it)",
+      "description": "New plain-text body, which is what search indexes; omit when sending typed content, and the body is derived from the blocks. Send body or content; sending neither is refused.",
       "type": "string"
     },
     "content": {
-      "description": "typed content blocks: {type: text|code|tool_use|tool_result|resource_link, ...}",
+      "description": "Replacement typed content blocks, in order. Each block has a type (text, code, tool_use, tool_result or resource_link) plus that type's fields, as in post_message. Omitted, the message keeps its current blocks.",
       "items": {
         "properties": {
           "type": {
@@ -6529,10 +6568,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "array"
     },
     "message_id": {
+      "description": "UUID of the message to edit. It must be your own message and not tombstoned.",
       "format": "uuid",
       "type": "string"
     },
     "metadata": {
+      "description": "Replacement JSON object stored with the message. Omitted or null, the current metadata is kept.",
       "type": "object"
     }
   },
@@ -7118,7 +7159,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `search_messages`
 
-**Search messages.** Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets, each naming its channel (channel_name), thread (thread_title) and author (author_handle) beside their ids.
+**Search messages.** Search the messages in a workspace by lexical, semantic or hybrid match, best hit first, optionally narrowed by channel, author, author kind and a time window. Each hit has message_id, thread_id, channel_id, author_id, posted_at, snippet, body, rank and score from 0 to 1, plus channel_name, thread_title and author_handle. Private channels and DMs the caller cannot read are never searched. Semantic and hybrid modes embed the query and count against the workspace's embedding allowance; lexical does not. To list a thread's messages in order use list_messages instead. Requires search:query.
 
 **Capability:** `search:query`
 
@@ -7128,32 +7169,35 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "after": {
-      "description": "Only messages posted at/after this RFC 3339 instant (inclusive).",
+      "description": "Only messages posted at or after this RFC 3339 instant (inclusive).",
       "format": "date-time",
       "type": "string"
     },
     "author_id": {
+      "description": "UUID of a member. Only messages written by this member are returned.",
       "format": "uuid",
       "type": "string"
     },
     "before": {
-      "description": "Only messages posted before this RFC 3339 instant (exclusive) — a half-open window with after.",
+      "description": "Only messages posted before this RFC 3339 instant (exclusive), so together with after it forms a half-open window.",
       "format": "date-time",
       "type": "string"
     },
     "channel_id": {
+      "description": "UUID of a channel. Only messages in this channel are returned.",
       "format": "uuid",
       "type": "string"
     },
     "embedding_model": {
-      "description": "Semantic/hybrid only: registered model name (default: active provider).",
+      "description": "Semantic and hybrid modes only: name of the registered embedding model whose vectors to match against. Defaults to the server's active embedding provider.",
       "type": "string"
     },
     "hybrid_weight": {
-      "description": "Hybrid only: semantic weight in [0,1] (default 0.5). combined = w*semantic + (1-w)*lexical over normalized scores.",
+      "description": "Hybrid mode only: weight given to the semantic score, from 0 to 1, defaulting to 0.5. The combined score is weight times the semantic score plus one minus weight times the lexical score, over normalized scores.",
       "type": "number"
     },
     "kind": {
+      "description": "Only messages whose author is of this kind: human or agent.",
       "enum": [
         "human",
         "agent"
@@ -7162,12 +7206,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "limit": {
       "default": 25,
+      "description": "Maximum number of hits to return. Defaults to 25, from 1 to 500.",
       "maximum": 500,
       "minimum": 1,
       "type": "integer"
     },
     "mode": {
       "default": "lexical",
+      "description": "How to match. lexical (the default) uses full-text keyword search. semantic embeds the query and ranks by meaning. hybrid blends the two using hybrid_weight.",
       "enum": [
         "lexical",
         "semantic",
@@ -7176,15 +7222,17 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "query": {
+      "description": "The search text, which must not be empty. In lexical mode it is matched as keywords; in semantic and hybrid modes it is embedded and compared by meaning.",
       "minLength": 1,
       "type": "string"
     },
     "snippet_only": {
       "default": false,
-      "description": "Drop full message body from each hit (keep only the snippet) to save tokens.",
+      "description": "When true, each hit drops its full body and keeps only the snippet, to save tokens. Defaults to false.",
       "type": "boolean"
     },
     "workspace_id": {
+      "description": "UUID of the workspace to search. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -7885,7 +7933,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_group_dm`
 
-**Get group DM.** Fetch one group DM the caller participates in. Requires workspace:read.
+**Get group DM.** Fetch one group DM conversation by id as {id, workspace_id, thread_id, title, member_ids, created_at, updated_at}. Only a participant can read it: any other member is refused, and the conversation must be in your workspace. Use list_group_dms to find the group DMs a member is in, open_group_dm to start one, and post_group_dm_message to write to it. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7895,6 +7943,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "group_dm_conversation_id": {
+      "description": "UUID of the group DM conversation, from open_group_dm or list_group_dms. You must be one of its participants.",
       "format": "uuid",
       "type": "string"
     }
@@ -7908,7 +7957,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `post_group_dm_message`
 
-**Post group DM message.** Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.
+**Post group DM message.** Post a text message as the caller into a group DM they take part in, and return the stored message. @handle mentions in the body are recorded and notified, and a message from a human clears the thread's declared agent status. It is for group DMs only: use post_dm_message for a 1:1 DM, post_message for a channel thread, and open_group_dm or list_group_dms to get the conversation id. A caller who is not a participant is refused. Requires message:post.
 
 **Capability:** `message:post`
 
@@ -7918,13 +7967,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "body": {
+      "description": "Plain-text message body, required. A group DM takes text only, with no typed content blocks.",
       "type": "string"
     },
     "group_dm_conversation_id": {
+      "description": "UUID of the group DM conversation to post into, from open_group_dm or list_group_dms. The caller must be a participant.",
       "format": "uuid",
       "type": "string"
     },
     "metadata": {
+      "description": "Optional JSON object stored with the message and returned with it. Defaults to an empty object.",
       "type": "object"
     }
   },
@@ -7966,7 +8018,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_thread_dependents`
 
-**List thread dependents.** List threads that depend on this thread. Requires workspace:read.
+**List thread dependents.** List the dependency edges that point at a thread, which are the tasks it blocks, oldest first. Each edge is thread_id (the waiting task), depends_on_thread_id (the thread you passed) and created_at. For the other direction, what this thread itself waits on and whether it is ready to run, use list_thread_dependencies. Edges are created with add_thread_dependency. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -7976,6 +8028,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose dependents to list: the prerequisite that other tasks wait on. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -8041,7 +8094,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `remove_thread_required_skill`
 
-**Remove thread required skill.** Remove a required skill from a thread. Requires thread:transition.
+**Remove thread required skill.** Remove one required skill from a thread, so the thread no longer asks for it when work is routed to members by declared skill. It returns {ok: true}, or not found when that skill was not required on the thread. Use list_thread_required_skills to see the current set and add_thread_required_skill to add one. Requires thread:transition.
 
 **Capability:** `thread:transition`
 
@@ -8051,9 +8104,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "skill": {
+      "description": "The skill tag to remove, compared exactly against the stored tag, with no trimming or case folding, so copy it from list_thread_required_skills.",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to remove the required skill from. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -8091,7 +8146,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `delete_glossary_term`
 
-**Delete glossary term.** Delete a glossary term in the caller workspace. Requires workspace:write.
+**Delete glossary term.** Permanently remove a term, with its definition and aliases, from the workspace glossary. The glossary rides in get_workspace_context, so the term drops out of later context packs. Use set_glossary_term to redefine a term instead of deleting it, and list_glossary_terms to see the exact terms. Returns {deleted: true}, or a not-found error when no such term is defined, so a second call fails rather than repeating. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -8101,6 +8156,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "term": {
+      "description": "The term to delete, matched exactly (case-sensitive) after surrounding whitespace is trimmed.",
       "type": "string"
     }
   },
@@ -8113,7 +8169,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `delete_recipe`
 
-**Delete recipe.** Delete a recipe. Requires workspace:write.
+**Delete recipe.** Permanently delete a recipe blueprint together with its recorded run history. Threads that earlier runs created are left alone, and a task schedule that pointed at the recipe stays and from then on fires a plain thread. Use list_recipes to find ids and instantiate_recipe to run a recipe instead of deleting it. Returns {deleted: true}, or a not-found error when the recipe does not exist or is in another workspace; you need access to the recipe's channel. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -8123,6 +8179,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "recipe_id": {
+      "description": "UUID of the recipe to delete, from list_recipes or create_recipe. It must be in your workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -8165,7 +8222,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `delete_task_schedule`
 
-**Delete task schedule.** Delete a task schedule. Requires workspace:write.
+**Delete task schedule.** Permanently delete a task schedule so it never fires again; use set_task_schedule_active to pause one you may want back. Threads the schedule already created are left alone. list_task_schedules finds schedule ids. Returns {deleted: true}, or a not-found error when the schedule does not exist; you need access to the schedule's channel. Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -8175,6 +8232,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "schedule_id": {
+      "description": "UUID of the schedule to delete, from list_task_schedules or create_task_schedule. It must be in your workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -8218,7 +8276,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `revoke_fsm_hook`
 
-**Revoke FSM hook.** Revoke an FSM hook. Requires workspace:write.
+**Revoke FSM hook.** Revoke an FSM hook so it stops firing on thread state transitions. The hook is disabled and stamped with revoked_at rather than deleted, it no longer appears in list_fsm_hooks, and its in-memory signing secret is dropped. Revoking is final: a hook that is unknown, in another workspace or already revoked returns not found, so register a new one with register_fsm_hook to restore the behavior. Returns the revoked hook (id, label, from_state, to_state, handler_kind, handler_target, enabled, created_at, revoked_at). Requires workspace:write.
 
 **Capability:** `workspace:write`
 
@@ -8228,10 +8286,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "hook_id": {
+      "description": "UUID of the FSM hook to revoke, from register_fsm_hook or list_fsm_hooks.",
       "format": "uuid",
       "type": "string"
     },
     "workspace_id": {
+      "description": "UUID of the workspace that owns the hook. It must be the caller's own workspace.",
       "format": "uuid",
       "type": "string"
     }
@@ -8246,7 +8306,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `clear_review_requirement`
 
-**Clear review requirement.** Clear a thread review requirement. Requires channel:admin.
+**Clear review requirement.** Remove a thread's review requirement entirely, including its send-back cap, so the thread no longer needs any approval before it can close. This is a full waiver; to change how many approvals are needed use set_review_requirement (raising the count needs only thread:transition, lowering it channel:admin), and remove_reviewer takes a named reviewer off. Named reviewers stay, and the removal is recorded in the audit log as review_requirement.clear. Returns {cleared: true}, or a not-found error when the thread had no requirement. Requires channel:admin.
 
 **Capability:** `channel:admin`
 
@@ -8256,6 +8316,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose review requirement to remove. You must be able to read it.",
       "format": "uuid",
       "type": "string"
     }
@@ -8292,7 +8353,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_reviewers`
 
-**List reviewers.** List reviewers on a thread. Requires workspace:read.
+**List reviewers.** List the members named as reviewers on a thread, as a list of member ids, oldest designation first. An empty list means the review is open to any qualifying member. This is only the named set; for the approvals so far and whether the requirement is met use get_review_status, and for the recorded decisions use list_reviews. Names are added with add_reviewer and removed with remove_reviewer. Requires workspace:read.
 
 **Capability:** `workspace:read`
 
@@ -8302,6 +8363,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "thread_id": {
+      "description": "UUID of the thread whose named reviewers to list. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }
@@ -8315,7 +8377,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `remove_reviewer`
 
-**Remove reviewer.** Remove a reviewer from a thread. Requires channel:admin.
+**Remove reviewer.** Remove a member from a thread's named reviewer set and write a reviewer.remove audit record; it returns {removed: true}, or not found if the member was not named. This only edits who may be asked to review: it does not delete reviews already submitted. Add names with add_reviewer and read the set with list_reviewers. Requires channel:admin, which is stricter than the thread:transition that add_reviewer needs.
 
 **Capability:** `channel:admin`
 
@@ -8325,10 +8387,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "member_id": {
+      "description": "UUID of the reviewer to remove from the thread's named set.",
       "format": "uuid",
       "type": "string"
     },
     "thread_id": {
+      "description": "UUID of the thread to remove the reviewer from. The caller must be able to read the thread's channel.",
       "format": "uuid",
       "type": "string"
     }

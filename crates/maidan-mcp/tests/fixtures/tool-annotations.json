@@ -24,15 +24,15 @@
   "mixed": {
     "claim_next_thread": {
       "returns": "the claimed thread and its content-addressed pin",
-      "writes": "Atomically claim the oldest claimable thread"
+      "writes": "Claim the next piece of work"
     },
     "claim_next_workspace_thread": {
       "returns": "the claimed thread and its content-addressed pin",
-      "writes": "Atomically claim the oldest claimable thread"
+      "writes": "Claim the next piece of work"
     },
     "mark_inbox_read": {
       "returns": "the member's inbox after the cursor moves",
-      "writes": "Advance a member's inbox read-cursor"
+      "writes": "Move a member's mention inbox read-cursor forward"
     },
     "open_dm_conversation": {
       "returns": "the conversation, created on the first call",
