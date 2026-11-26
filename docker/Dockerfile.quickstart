@@ -16,7 +16,7 @@ FROM ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451
 # (scripts/release-record.sh; scripts/check-deploy-pins.sh lists them). No hash is
 # pinned here: the tarball is checked against the SHA256SUMS published beside it,
 # which is cosign-signed like the tarball (docs/Operations.md, "Cutting a release").
-ARG MAIDAN_VERSION=v480.0.0
+ARG MAIDAN_VERSION=v481.0.0
 # Set by buildkit; fall back to the build host's arch for a plain `docker build`.
 ARG TARGETARCH
 

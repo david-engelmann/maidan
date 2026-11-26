@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [481.0.0] — 2026-11-26
+
+Create your workspace works in the browser, role playbooks are served as MCP prompts and resources, operators mint review accounts for directories, credential-bearing answers are never kept for idempotent replay, and 51 more tool definitions say when to use each tool.
+
+### Role playbooks are served over MCP
+
+- **Added:** `prompts/list` gains one `playbook_<role>` prompt and `resources/list` one `maidan://playbooks/<role>` markdown resource per role skill under `examples/claude-code/` (claimant, reviewer, dispatcher, coordinator-wake, approver, planner, inbox, memory, recipes, credits, admin, operator), compiled in from the same `SKILL.md` files so one edit updates the Claude Code skill and the MCP copy. A client that is not Claude Code (Claude Desktop, Cursor, an inspector) can now read how the tools fit together for a role. They are served on `/mcp/worker`, `/mcp/reviewer` and `/mcp/coordinator` as well, need only `workspace:read`, and the server instructions name them.
+
+### Fifty-one more tool definitions, and the families agents confused
+
+- **Changed:** 51 more MCP tool descriptions were rewritten from their handlers, with every parameter described: the next lowest scorers, and the families an agent could not tell apart. The claim tools, the queue-depth and occupancy tools and the `wait_for_*` tools now each say what they answer that their siblings do not, and name the sibling for the other cases.
+- **Fixed:** descriptions that were wrong. `claim_next_thread` and `claim_next_workspace_thread` pick by priority aged by hours waited, not strictly the oldest. `claim_thread` gives a claim with no lease deadline. `get_channel_occupancy`'s blocked count includes unclaimable threads. `add_channel_member` overwrites an existing member's role, so omitting `role` demotes an admin. `assign_thread` replaces the current holder. `delete_recipe` removes its run history. `list_memory_blocks` names `char_limit`, not `limit`. `remove_reviewer` needs `channel:admin`.
+
+### The operator mints a review account for a directory or health check
+
+- **Added:** `POST /operator/review-accounts` (`operator:global`) makes a tenant for one provider's reviewers and checks: a workspace named `Review: <provider>` of origin `open`, with a `#general` channel, the "Say hello" task, an admin, an agent and a reviewer agent. The body is `{"provider": "example-directory", "ttl_days": 90}` (a provider is 1 to 32 characters of `a-z`, `0-9` and `-`; `ttl_days` is 1 to 90 and defaults to 90). The three tokens are shown once and expire after `ttl_days`. The workspace holds only sample work and is never served by the instance's own GitHub, Slack or Linear credentials. It does not need the demo sandbox's switches and a full sandbox limit does not refuse it, and it answers 503 naming `MAIDAN_PUBLIC_ORIGIN` when none is set. Each provider gets its own account, so erasing one (`DELETE /operator/workspaces/{id}`) reaches nobody else.
+- **Changed:** the demo sandbox and review accounts make their tenant with one function, so the two cannot drift.
+- **Security:** a response marked `Cache-Control: no-store`, which carries a credential (a minted token, a signing secret, a review account's tokens), is no longer kept for `Idempotency-Key` replay. Keeping it held the secret in plain text for 24 hours and handed it to any retry with the key. Such a retry now runs again.
+
+### Create your workspace works in the browser
+
+- **Fixed:** the console's and the front page's policy allowed forms to go only to this server, and the sign-up form's answer is a redirect to the sign-in provider. The browser stopped that redirect, so the first click on **Create your workspace** did nothing and the second was refused with "the human check was not accepted", because the first had already spent the check. Both pages now name the provider's origin in `form-action`, as the consent page already does for the app it returns to.
+
 ## [480.0.0] — 2026-11-25
 
 MCP tool definitions say when to use each tool and describe every parameter, the workspace context names only channels the reader may see, a stdio session reports its release, and the Glama build file ships.

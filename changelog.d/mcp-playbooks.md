@@ -1,3 +1,0 @@
-### Role playbooks are served over MCP
-
-- **Added:** `prompts/list` gains one `playbook_<role>` prompt and `resources/list` one `maidan://playbooks/<role>` markdown resource per role skill under `examples/claude-code/` (claimant, reviewer, dispatcher, coordinator-wake, approver, planner, inbox, memory, recipes, credits, admin, operator), compiled in from the same `SKILL.md` files so one edit updates the Claude Code skill and the MCP copy. A client that is not Claude Code (Claude Desktop, Cursor, an inspector) can now read how the tools fit together for a role. They are served on `/mcp/worker`, `/mcp/reviewer` and `/mcp/coordinator` as well, need only `workspace:read`, and the server instructions name them.
