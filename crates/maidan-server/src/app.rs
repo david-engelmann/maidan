@@ -139,34 +139,6 @@ fn widen_form_action(policy: &str, origin: Option<&str>) -> String {
     }
 }
 
-#[cfg(test)]
-mod form_action_tests {
-    use super::*;
-
-    #[test]
-    fn every_page_that_posts_sign_up_lets_the_provider_redirect_through() {
-        let provider = "https://team.cloudflareaccess.com";
-        for policy in [
-            CONSOLE_CSP,
-            CONSOLE_CSP_TURNSTILE,
-            LANDING_CSP,
-            LANDING_CSP_TURNSTILE,
-        ] {
-            let widened = widen_form_action(policy, Some(provider));
-            assert!(
-                widened.contains(&format!("form-action 'self' {provider};")),
-                "{widened}"
-            );
-            assert_eq!(widened.matches("form-action").count(), 1, "{widened}");
-        }
-    }
-
-    #[test]
-    fn without_a_provider_the_policy_is_unchanged() {
-        assert_eq!(widen_form_action(CONSOLE_CSP, None), CONSOLE_CSP);
-    }
-}
-
 /// The headers every waitlist page answer carries, besides its CSP: the page
 /// is never framed, never sniffed, and leaks no referrer to the links on it.
 fn landing_headers(
@@ -2336,5 +2308,33 @@ mod body_limit_tests {
             parse_artifact_max_body_bytes(Some("545259520".into())),
             545_259_520
         );
+    }
+}
+
+#[cfg(test)]
+mod form_action_tests {
+    use super::*;
+
+    #[test]
+    fn every_page_that_posts_sign_up_lets_the_provider_redirect_through() {
+        let provider = "https://team.cloudflareaccess.com";
+        for policy in [
+            CONSOLE_CSP,
+            CONSOLE_CSP_TURNSTILE,
+            LANDING_CSP,
+            LANDING_CSP_TURNSTILE,
+        ] {
+            let widened = widen_form_action(policy, Some(provider));
+            assert!(
+                widened.contains(&format!("form-action 'self' {provider};")),
+                "{widened}"
+            );
+            assert_eq!(widened.matches("form-action").count(), 1, "{widened}");
+        }
+    }
+
+    #[test]
+    fn without_a_provider_the_policy_is_unchanged() {
+        assert_eq!(widen_form_action(CONSOLE_CSP, None), CONSOLE_CSP);
     }
 }
