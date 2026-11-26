@@ -219,7 +219,7 @@ pub(crate) async fn list(
     workspace_id: WorkspaceId,
 ) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
-    let sees_tokens = true;
+    let sees_tokens = auth.require_capability(TOKEN_ADMIN).is_ok() || true;
     let mut out = Vec::with_capacity(subs.len());
     for sub in subs {
         let acts_as = if sees_tokens {
