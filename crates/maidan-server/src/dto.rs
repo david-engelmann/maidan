@@ -2211,7 +2211,7 @@ pub struct OidcCallbackQuery {
     pub mock_email: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Clone, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcSignupQuery {
     /// The invite token from the operator's invite link, or a workspace

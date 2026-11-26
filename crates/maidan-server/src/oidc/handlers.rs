@@ -211,11 +211,42 @@ pub async fn signup_form(
         return_to: form.return_to,
         workspace_name: form.workspace_name,
     };
-    let mut res = start_signup(&state, &headers, q, form.turnstile.as_deref(), true).await?;
+    // A browser that posted the form is sent back to it with a reason it
+    // can show, not left on a JSON error page with a spent check.
+    let back = accepts_html(&headers).then(|| q.clone());
+    let mut res = match start_signup(&state, &headers, q, form.turnstile.as_deref(), true).await {
+        Ok(res) => res,
+        Err(err) => {
+            let Some(q) = back else {
+                return Err(err);
+            };
+            let name = q.workspace_name.clone();
+            let mut path = signup_check_path(&q, name.as_deref());
+            path.push_str("&signup_error=");
+            path.push_str(signup_refusal(&err));
+            Redirect::to(&path).into_response()
+        }
+    };
     if res.status().is_redirection() {
         *res.status_mut() = axum::http::StatusCode::SEE_OTHER;
     }
     Ok(res)
+}
+
+/// Why a browser's sign-up start was refused, as the code the console's
+/// form turns into a sentence (`web/console/src/core/signup.ts`).
+fn signup_refusal(err: &ApiError) -> &'static str {
+    match err {
+        ApiError::Forbidden(why)
+            if why == crate::turnstile::MISSING || why == crate::turnstile::REJECTED =>
+        {
+            "check"
+        }
+        ApiError::BadGateway(_) => "unavailable",
+        ApiError::BadRequest(_) => "name",
+        ApiError::Forbidden(_) | ApiError::NotFound => "refused",
+        _ => "failed",
+    }
 }
 
 /// Start a sign-up. Only the form POST carries a Turnstile token; a token
