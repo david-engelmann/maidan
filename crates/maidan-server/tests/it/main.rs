@@ -998,6 +998,9 @@ mod wasi_tenancy_e2e;
 #[path = "../web_push_e2e.rs"]
 mod web_push_e2e;
 
+#[path = "../webhook_acts_as_e2e.rs"]
+mod webhook_acts_as_e2e;
+
 #[path = "../webhook_console_e2e.rs"]
 mod webhook_console_e2e;
 

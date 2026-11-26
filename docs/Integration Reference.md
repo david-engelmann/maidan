@@ -2031,6 +2031,23 @@ label, events and the day it was added, adds one (events are chosen from every
 kind, in groups), shows its signing secret once, and revokes one after a
 confirmation. The sends of these webhooks are listed in the same tab.
 
+A webhook acts as the token that registered it and is revoked at its next
+event once that token ends. `GET /workspaces/{workspace_id}/webhooks` lists
+the workspace's webhooks, and a caller who may list the workspace's tokens
+(`token:admin`) also gets an `acts_as` object on each one:
+
+```json
+{"acts_as": {"token_id": "...", "label": "ops", "status": "expiring", "expires_at": "2026-12-01T00:00:00Z"}}
+```
+
+`status` is `live` (the token can still register the webhook and has no
+expiry), `expiring` (the same, and it ends at `expires_at`) or `ended` (it was
+revoked, expired or rotated, its member was deactivated, or it lost
+`workspace:admin`; the webhook has no further deliveries). The secret is never
+shown. A webhook registered without a token reads `ended` with no `token_id`.
+Another caller gets the webhook without `acts_as`, so a reconcile that holds
+`token:admin` can replace a webhook before its next event revokes it.
+
 The URL must resolve to public network addresses. Loopback, private, link-local,
 shared, multicast, documentation, and reserved ranges are refused; redirects
 are not followed. The same rule covers HTTP slash/FSM handlers, federation
