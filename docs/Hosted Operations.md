@@ -131,7 +131,7 @@ typed into the command or printed:
 ```sh
 curl -sS -X POST "$MAIDAN_URL/operator/review-accounts" \
   -H "Authorization: Bearer $MAIDAN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"provider":"glama","ttl_days":90}'
+  -d '{"provider":"example-directory","ttl_days":90}'
 ```
 
 `provider` is 1 to 32 characters of `a-z`, `0-9` and `-`. `ttl_days` is 1 to 90
@@ -154,7 +154,7 @@ What the account is:
   more.
 - Separate from every other tenant, so its tokens see nothing of anyone
   else's work, and from the demo: it needs neither `MAIDAN_DEMO_SANDBOX` nor
-  the demo instance marker, and it does not count against the sandbox limit.
+  the demo instance marker, and a full sandbox limit does not refuse it.
 - Recorded in its own audit log: each token mint with the source
   `review-account`, and a `review_account.create` row naming the operator, the
   provider and the expiry.
