@@ -10,8 +10,8 @@
 //!
 //! What is kept: a response the retry should see again, which is any 2xx or
 //! 4xx except the "not now" ones (408, 409, 425, 429). Those, a 5xx, a
-//! stream, or a body over [`MAX_STORED_BODY`] release the key, so the retry
-//! runs again. Keys are scoped to the caller (workspace and acting member)
+//! stream, a `Cache-Control: no-store` answer (it carries a credential), or a
+//! body over [`MAX_STORED_BODY`] release the key, so the retry runs again. Keys are scoped to the caller (workspace and acting member)
 //! and live [`RETENTION`]. A request without the header, a read, an
 //! unauthenticated route, and the SCIM and A2A protocol routes (which answer
 //! in their own error envelopes) are untouched.
@@ -182,7 +182,20 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
     let streaming = content_type
         .as_deref()
         .is_some_and(|ct| ct.starts_with("text/event-stream"));
-    if transient(response.status()) || streaming {
+    // A response marked `no-store` carries a credential (a minted token, a
+    // signing secret). Keeping it would hold the secret in plain text for
+    // RETENTION and hand it to any retry with the key, so the key is
+    // released and a retry runs again instead.
+    let no_store = response
+        .headers()
+        .get_all(header::CACHE_CONTROL)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .any(|v| {
+            v.split(',')
+                .any(|d| d.trim().eq_ignore_ascii_case("no-store"))
+        });
+    if transient(response.status()) || streaming || no_store {
         release().await;
         return response;
     }

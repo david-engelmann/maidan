@@ -105,6 +105,9 @@ pub fn resource_read(uri: &str) -> CacheHint {
         .unwrap_or("");
     let ttl_ms = match kind {
         "artifacts" | "workspaces" | "channels" | "boots" => RECORD_TTL_MS,
+        // A playbook is compiled into the binary, so it changes only with a
+        // release, as the lists do.
+        "playbooks" => RELEASE_TTL_MS,
         // A thread's transcript changes with every post, claim and transition,
         // and its digest pointer with every link; the digest's bytes are the
         // artifact URI it names, cached for a record's TTL.
@@ -134,6 +137,13 @@ mod tests {
     fn an_artifact_read_uses_the_short_record_ttl() {
         let hint = resource_read(&format!("maidan://artifacts/{}", "a".repeat(64)));
         assert_eq!(hint.ttl_ms, RECORD_TTL_MS);
+        assert_eq!(hint.scope, CacheScope::Private);
+    }
+
+    #[test]
+    fn a_playbook_read_is_kept_for_a_release() {
+        let hint = resource_read("maidan://playbooks/claimant");
+        assert_eq!(hint.ttl_ms, RELEASE_TTL_MS);
         assert_eq!(hint.scope, CacheScope::Private);
     }
 

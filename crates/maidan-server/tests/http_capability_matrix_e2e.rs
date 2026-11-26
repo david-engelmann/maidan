@@ -675,6 +675,9 @@ fn apply_route_defaults(
     if path == "/operator/workspaces/{id}/credits/grants" && method == "POST" {
         return b.json(&json!({ "usd_micros": 5000000, "note": "capability matrix" }));
     }
+    if path == "/operator/review-accounts" && method == "POST" {
+        return b.json(&json!({ "provider": "probe", "ttl_days": 1 }));
+    }
     if path == "/workspaces/{id}/credits/top-ups" && method == "POST" {
         return b.json(&json!({ "usd": 5, "method": "usdc" }));
     }

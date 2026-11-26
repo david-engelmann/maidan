@@ -5,10 +5,12 @@
 //! - `initialize` handshake, and `server/discover` (the `2026-07-28` way to
 //!   learn the versions, capabilities and instructions)
 //! - `tools/list` + `tools/call`
-//! - `resources/list` (the caller's workspace) + `resources/templates/list` + `resources/read`
+//! - `resources/list` (the caller's workspace, and the role playbooks) +
+//!   `resources/templates/list` + `resources/read`
 //! - `resources/subscribe` + `resources/unsubscribe`, scoped to the subscribing
 //!   caller and session ([`subscriptions`])
-//! - `prompts/list` + `prompts/get`
+//! - `prompts/list` + `prompts/get`, including one `playbook_<role>` prompt per
+//!   role skill ([`playbooks`])
 //! - a `ttlMs` and `cacheScope` on every cacheable result ([`caching`])
 //! - worker and reviewer tool profiles on their own endpoints ([`profiles`])
 //!
@@ -28,6 +30,7 @@ pub mod context;
 pub mod error;
 mod land_gate_advice;
 pub mod parked_waits;
+pub mod playbooks;
 pub mod profiles;
 pub mod prompts;
 pub mod protocol;

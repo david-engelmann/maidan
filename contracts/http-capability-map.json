@@ -1633,6 +1633,12 @@
   },
   {
     "method": "POST",
+    "path": "/operator/review-accounts",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
     "path": "/operator/workspaces",
     "capability": "operator:global",
     "surface": "http"

@@ -347,3 +347,70 @@ async fn ui_api_writes_are_idempotent() {
     post(None, body).await.unwrap();
     assert_eq!(count().await, 2);
 }
+
+#[tokio::test]
+async fn a_response_carrying_a_credential_is_never_kept_for_replay() {
+    let (addr, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let client = reqwest::Client::new();
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "idem-secret".into(),
+        })
+        .await
+        .unwrap();
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: admin.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::WORKSPACE_WRITE.into(),
+                capability::TOKEN_ADMIN.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let url = format!(
+        "{base}/workspaces/{}/members/{}/tokens",
+        ws.id.0, admin.id.0
+    );
+    let mint = || async {
+        client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", secret.as_str()))
+            .header("Content-Type", "application/json")
+            .header("Idempotency-Key", "mint-1")
+            .body(r#"{"capabilities":["workspace:read"]}"#)
+            .send()
+            .await
+            .unwrap()
+    };
+
+    // The answer holds a new token's secret, so the key is not kept: the
+    // retry mints again rather than receiving the first secret back.
+    let first = mint().await;
+    assert_eq!(first.status(), StatusCode::CREATED);
+    assert_eq!(first.headers()["cache-control"], "no-store");
+    let first: Value = first.json().await.unwrap();
+    let retry = mint().await;
+    assert_eq!(retry.status(), StatusCode::CREATED);
+    assert!(retry.headers().get("idempotent-replayed").is_none());
+    let retry: Value = retry.json().await.unwrap();
+    assert_ne!(retry["secret"], first["secret"]);
+    assert_ne!(retry["id"], first["id"]);
+}
