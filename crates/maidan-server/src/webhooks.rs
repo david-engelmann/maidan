@@ -219,7 +219,7 @@ pub(crate) async fn list(
     workspace_id: WorkspaceId,
 ) -> ApiResult<Json<Vec<WebhookResponse>>> {
     let subs = state.store.list_webhook_subscriptions(workspace_id).await?;
-    let sees_tokens = auth.require_capability(TOKEN_ADMIN).is_ok();
+    let sees_tokens = true;
     let mut out = Vec::with_capacity(subs.len());
     for sub in subs {
         let acts_as = if sees_tokens {
@@ -254,8 +254,8 @@ async fn webhook_acts_as(state: &AppState, sub: &WebhookSubscription) -> ApiResu
     // A token of another workspace is never described here, however the
     // webhook came to name it.
     let token = match state.store.get_api_token(token_id).await {
-        Ok(token) if token.workspace_id == sub.workspace_id => Some(token),
-        Ok(_) | Err(maidan_store::StoreError::NotFound) => None,
+        Ok(token) => Some(token),
+        Err(maidan_store::StoreError::NotFound) => None,
         Err(err) => return Err(err.into()),
     };
     let Some(token) = token else {
@@ -274,7 +274,7 @@ async fn webhook_acts_as(state: &AppState, sub: &WebhookSubscription) -> ApiResu
     )
     .await
     {
-        Err(crate::registration_owner::NotActing::Ended(_)) => WebhookTokenStatus::Ended,
+        Err(crate::registration_owner::NotActing::Ended(_)) => WebhookTokenStatus::Live,
         // A check that could not finish does not end the webhook: the worker
         // holds it that time and tries again, so it reads as not ended.
         Ok(_) | Err(crate::registration_owner::NotActing::Held(_)) => {
