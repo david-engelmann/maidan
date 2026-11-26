@@ -6544,6 +6544,25 @@
         ],
         "type": "object"
       },
+      "MintReviewAccount": {
+        "additionalProperties": false,
+        "description": "Body for `POST /operator/review-accounts`. Both fields are checked after the capability check, so a body of `{}` still reaches it.",
+        "properties": {
+          "provider": {
+            "description": "The directory or service the account is for: 1 to 32 characters of `a-z`, `0-9` and `-`.",
+            "type": "string"
+          },
+          "ttl_days": {
+            "description": "How long the tokens live, 1 to 90 days. Defaults to 90.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "MintShareTicketResponse": {
         "properties": {
           "artifact_shas": {
@@ -6617,6 +6636,86 @@
           "invite",
           "secret",
           "accept_path"
+        ],
+        "type": "object"
+      },
+      "MintedCredential": {
+        "description": "One member of a new tenant and its token, shown once.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "member_id": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "token": {
+            "description": "Returned once. Only its hash is persisted.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "handle",
+          "token",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "MintedReviewAccount": {
+        "description": "`POST /operator/review-accounts` response. The three tokens are shown once.",
+        "properties": {
+          "admin": {
+            "$ref": "#/components/schemas/MintedCredential"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/MintedCredential"
+          },
+          "channel_id": {
+            "$ref": "#/components/schemas/ChannelId"
+          },
+          "console_url": {
+            "description": "The console, absolute.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When the tokens stop working.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "mcp_url": {
+            "description": "The MCP endpoint an agent connects to, absolute.",
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reviewer": {
+            "$ref": "#/components/schemas/MintedCredential"
+          },
+          "task_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "provider",
+          "workspace_id",
+          "channel_id",
+          "task_id",
+          "expires_at",
+          "mcp_url",
+          "console_url",
+          "admin",
+          "agent",
+          "reviewer"
         ],
         "type": "object"
       },
@@ -24112,6 +24211,89 @@
           }
         ],
         "summary": "Get an embeddings reindex job",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/review-accounts": {
+      "post": {
+        "description": "Makes a workspace of sample work for the reviewer of one directory or health check: a `#general` channel with the starter task, an admin, and two agents, with three tokens shown once that expire after `ttl_days`. The workspace never uses the instance's own GitHub, Slack or Linear credentials. Answers 503 when `MAIDAN_PUBLIC_ORIGIN` is not set, because the URLs it returns are built on it.",
+        "operationId": "mint_review_account",
+        "parameters": [
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MintReviewAccount"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MintedReviewAccount"
+                }
+              }
+            },
+            "description": "The workspace, its three tokens (shown once) and the URLs to connect with"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/PaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Open a review account for one provider",
         "tags": [
           "operator"
         ]

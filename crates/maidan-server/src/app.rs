@@ -1257,6 +1257,11 @@ pub fn router(state: AppState) -> Router {
             "/operator/waitlist/{id}/invite",
             no_store(post(routes::invite_waitlist_entry)),
         )
+        // Three secrets in the answer, so it is never cached.
+        .route(
+            "/operator/review-accounts",
+            no_store(post(crate::review_account::mint_review_account)),
+        )
         .route(
             "/operator/workspaces",
             no_store(post(routes::provision_workspace)),

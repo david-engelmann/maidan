@@ -202,6 +202,12 @@ What keeps it safe to leave open:
   minute per client; sign-up off; request bodies over 64 KiB refused at the
   edge before they wake the container; Turnstile when configured.
 
+A directory or health check that reviews the hosted service at maidan.world,
+and cannot answer a sign-up's emailed code, gets a review account from the
+operator instead: a workspace of sample work with its own tokens that expire
+and can be revoked. Each provider has its own. See [Hosted
+operations](Hosted%20Operations.md#review-accounts).
+
 ### Deploying it
 
 1. Set the repository variable `DEMO_DOMAIN` to `true`. The Worker's

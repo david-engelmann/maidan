@@ -445,6 +445,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::list_waitlist,
         paths::export_waitlist,
         paths::invite_waitlist_entry,
+        paths::mint_review_account,
         paths::list_dead_mail,
         paths::requeue_dead_mail,
         paths::list_dead_egress,

@@ -19,6 +19,10 @@
 //! cross-site browser post, and stops at `MAIDAN_DEMO_SANDBOX_MAX` workspaces.
 //! Each sandbox is an ordinary tenant, so tenant isolation keeps one visitor
 //! out of another's.
+//!
+//! The tenant itself is made by [`mint_tenant`], which the operator's review
+//! accounts (`crate::review_account`) share: the same workspace, channel,
+//! starter task, admin and two agents, named and labelled by the caller.
 
 use std::sync::Arc;
 
@@ -38,6 +42,7 @@ use maidan_types::{
     NewThread, ThreadId, WorkspaceId, WorkspaceOrigin,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::config::ConfigError;
 use crate::error::ApiError;
@@ -150,11 +155,12 @@ pub struct MintSandboxRequest {
     pub turnstile_token: Option<String>,
 }
 
-/// One member of a new sandbox and its token, shown once.
-#[derive(Debug, Serialize)]
-pub struct SandboxCredential {
+/// One member of a new tenant and its token, shown once.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintedCredential {
     pub member_id: MemberId,
     pub handle: String,
+    /// Returned once. Only its hash is persisted.
     pub token: String,
     pub capabilities: Vec<String>,
 }
@@ -170,12 +176,12 @@ pub struct MintedSandbox {
     pub mcp_url: String,
     pub console_url: String,
     /// The person's token: every workspace capability, for the console.
-    pub admin: SandboxCredential,
+    pub admin: MintedCredential,
     /// The agent's token: `maidan.agent.worker`, for an MCP client.
-    pub agent: SandboxCredential,
+    pub agent: MintedCredential,
     /// A second agent's token, the same capability set: the member that
     /// reviews and closes what the first one hands off.
-    pub reviewer: SandboxCredential,
+    pub reviewer: MintedCredential,
 }
 
 /// What a sandbox admin holds: everything in its own workspace, and nothing
@@ -251,22 +257,75 @@ async fn mint_sandbox(
     state: &AppState,
     settings: &Arc<SandboxSettings>,
 ) -> Result<(StatusCode, Json<MintedSandbox>), ApiError> {
-    let expires_at = Utc::now() + Duration::hours(TOKEN_TTL_HOURS);
+    let minted = mint_tenant(
+        state,
+        TenantSpec {
+            workspace_name: "Sandbox".into(),
+            channel_topic: "Your sandbox. It is deleted within 24 hours.".into(),
+            admin_label: "sandbox admin".into(),
+            agent_label: "sandbox agent".into(),
+            reviewer_label: "sandbox reviewer".into(),
+            audit_source: "demo-sandbox",
+            expires_at: Utc::now() + Duration::hours(TOKEN_TTL_HOURS),
+            mcp_url: settings.mcp_url.clone(),
+            console_url: settings.console_url.clone(),
+        },
+    )
+    .await?;
+    tracing::info!(workspace = %minted.workspace_id.0, "demo sandbox minted");
+    Ok((StatusCode::CREATED, Json(minted)))
+}
+
+/// What differs between one kind of tenant and another: its names and token
+/// labels, the source its audit rows name, when its tokens stop and the URLs
+/// it hands out. Everything else about the tenant is the same for all.
+pub(crate) struct TenantSpec {
+    pub workspace_name: String,
+    pub channel_topic: String,
+    pub admin_label: String,
+    pub agent_label: String,
+    pub reviewer_label: String,
+    /// The `source` of every audit row the mint writes.
+    pub audit_source: &'static str,
+    pub expires_at: DateTime<Utc>,
+    pub mcp_url: String,
+    pub console_url: String,
+}
+
+/// A workspace of origin `open`, so the free allowance cuts it off and the
+/// instance's own credentials never serve it, with a `#general` channel, the
+/// sign-up's starter task, an admin, an agent and a second agent to review
+/// the first one's work. The three secrets are in the answer and nowhere else.
+pub(crate) async fn mint_tenant(
+    state: &AppState,
+    spec: TenantSpec,
+) -> Result<MintedSandbox, ApiError> {
+    let TenantSpec {
+        workspace_name,
+        channel_topic,
+        admin_label,
+        agent_label,
+        reviewer_label,
+        audit_source,
+        expires_at,
+        mcp_url,
+        console_url,
+    } = spec;
 
     let admin_secret = TokenSecret::generate();
     let provisioned = state
         .store
         .provision_workspace(
             maidan_store::store::NewProvisionedTenant {
-                name: "Sandbox".into(),
+                name: workspace_name,
                 admin_handle: "you".into(),
                 token_hash: hash_secret(admin_secret.as_str()),
-                token_label: Some("sandbox admin".into()),
+                token_label: Some(admin_label),
                 capabilities: sandbox_admin_capabilities(),
                 token_expires_at: Some(expires_at),
                 origin: WorkspaceOrigin::Open,
             },
-            Box::new(|record: &ApiToken| token_audit(record.member_id, "demo-sandbox")(record)),
+            Box::new(move |record: &ApiToken| token_audit(record.member_id, audit_source)(record)),
         )
         .await?;
     for stored in provisioned.events {
@@ -280,31 +339,37 @@ async fn mint_sandbox(
         .create_channel_with_event(NewChannel {
             workspace_id,
             name: CHANNEL.into(),
-            topic: Some("Your sandbox. It is deleted within 24 hours.".into()),
+            topic: Some(channel_topic),
             private: false,
         })
         .await?;
     crate::routes::publish_stored(state, stored).await;
 
     let actor = admin.id;
-    let agent = sandbox_agent(
+    let agent = tenant_agent(
         state,
         workspace_id,
         actor,
         expires_at,
-        "agent",
-        "Your agent",
-        "sandbox agent",
+        audit_source,
+        AgentSpec {
+            handle: "agent",
+            display_name: "Your agent",
+            token_label: agent_label,
+        },
     )
     .await?;
-    let reviewer = sandbox_agent(
+    let reviewer = tenant_agent(
         state,
         workspace_id,
         actor,
         expires_at,
-        "reviewer",
-        "Review agent",
-        "sandbox reviewer",
+        audit_source,
+        AgentSpec {
+            handle: "reviewer",
+            display_name: "Review agent",
+            token_label: reviewer_label,
+        },
     )
     .await?;
 
@@ -346,38 +411,40 @@ async fn mint_sandbox(
         .await?;
     crate::routes::publish_stored(state, stored).await;
 
-    tracing::info!(workspace = %workspace_id.0, "demo sandbox minted");
-    Ok((
-        StatusCode::CREATED,
-        Json(MintedSandbox {
-            workspace_id,
-            channel_id: channel.id,
-            task_id: task.id,
-            expires_at,
-            mcp_url: settings.mcp_url.clone(),
-            console_url: settings.console_url.clone(),
-            admin: SandboxCredential {
-                member_id: admin.id,
-                handle: admin.handle,
-                token: admin_secret.as_str().to_string(),
-                capabilities: provisioned.token.capabilities,
-            },
-            agent,
-            reviewer,
-        }),
-    ))
+    Ok(MintedSandbox {
+        workspace_id,
+        channel_id: channel.id,
+        task_id: task.id,
+        expires_at,
+        mcp_url,
+        console_url,
+        admin: MintedCredential {
+            member_id: admin.id,
+            handle: admin.handle,
+            token: admin_secret.as_str().to_string(),
+            capabilities: provisioned.token.capabilities,
+        },
+        agent,
+        reviewer,
+    })
 }
 
-/// One agent of a new sandbox with its worker token.
-async fn sandbox_agent(
+/// The handle, name and token label of one agent of a new tenant.
+struct AgentSpec {
+    handle: &'static str,
+    display_name: &'static str,
+    token_label: String,
+}
+
+/// One agent of a new tenant with its worker token.
+async fn tenant_agent(
     state: &AppState,
     workspace_id: WorkspaceId,
     actor: MemberId,
     expires_at: DateTime<Utc>,
-    handle: &str,
-    display_name: &str,
-    token_label: &str,
-) -> Result<SandboxCredential, ApiError> {
+    audit_source: &'static str,
+    spec: AgentSpec,
+) -> Result<MintedCredential, ApiError> {
     let secret = TokenSecret::generate();
     let capabilities =
         maidan_auth::capability_set::expand_set(AGENT_WORKER).map_err(ApiError::Internal)?;
@@ -386,10 +453,10 @@ async fn sandbox_agent(
         .create_agent_with_token(
             maidan_store::store::NewAgentWithToken {
                 workspace_id,
-                handle: handle.into(),
-                display_name: Some(display_name.into()),
+                handle: spec.handle.into(),
+                display_name: Some(spec.display_name.into()),
                 token_hash: hash_secret(secret.as_str()),
-                token_label: Some(token_label.into()),
+                token_label: Some(spec.token_label),
                 capabilities,
                 expires_at: Some(expires_at),
             },
@@ -403,14 +470,14 @@ async fn sandbox_agent(
                     "workspace_id": member.workspace_id.0,
                     "handle": member.handle,
                     "kind": member.kind,
-                    "source": "demo-sandbox",
+                    "source": audit_source,
                 }),
             }),
-            token_audit(actor, "demo-sandbox"),
+            token_audit(actor, audit_source),
         )
         .await?;
     crate::routes::publish_stored(state, created.event).await;
-    Ok(SandboxCredential {
+    Ok(MintedCredential {
         member_id: created.member.id,
         handle: created.member.handle,
         token: secret.as_str().to_string(),

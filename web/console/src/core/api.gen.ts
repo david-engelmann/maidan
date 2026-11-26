@@ -232,8 +232,11 @@ export type MeterUsage = { allowance?: number | null; meter: UsageMeter; over: b
 export type MintApiToken = { capabilities?: string[]; capability_set?: string | null; expires_at?: string | null; label?: string | null; quotas?: TokenQuota[]; };
 export type MintApiTokenResponse = { capabilities: string[]; expires_at?: string | null; id: ApiTokenId; member_id: MemberId; quotas: TokenQuota[]; secret: string; workspace_id: WorkspaceId; };
 export type MintAppToken = { capabilities?: string[]; expires_at?: string | null; label?: string | null; quotas?: TokenQuota[]; };
+export type MintedCredential = { capabilities: string[]; handle: string; member_id: MemberId; token: string; };
+export type MintedReviewAccount = { admin: MintedCredential; agent: MintedCredential; channel_id: ChannelId; console_url: string; expires_at: string; mcp_url: string; provider: string; reviewer: MintedCredential; task_id: ThreadId; workspace_id: WorkspaceId; };
 export type MintFsmHookResponse = { hook: FsmHookResponse; secret?: string | null; };
 export type MintPeerResponse = { peer: PeerResponse; secret: string; };
+export type MintReviewAccount = { provider?: string; ttl_days?: number | null; };
 export type MintShareTicketResponse = { artifact_shas: string[]; secret: string; ticket: ShareTicket; };
 export type MintSlashCommandResponse = { command: SlashCommandResponse; secret?: string | null; };
 export type MintWebhookResponse = { secret: string; webhook: WebhookResponse; };
@@ -834,6 +837,7 @@ export type ApiRoute =
   | "POST /operator/github/mark-ready"
   | "POST /operator/mail/dead/{id}/requeue"
   | "POST /operator/reindex-embeddings"
+  | "POST /operator/review-accounts"
   | "POST /operator/waitlist/{id}/invite"
   | "POST /operator/workspaces"
   | "POST /operator/workspaces/{id}/credits/grants"
