@@ -277,12 +277,36 @@ async fn a_sign_up_start_with_a_rejected_or_waitlist_token_is_refused() {
         let res = client()
             .post(format!("{base}/auth/oidc/signup"))
             .form(&[("turnstile", token)])
-            .header("accept", "text/html")
             .send()
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::FORBIDDEN, "{token}");
     }
+}
+
+#[tokio::test]
+async fn a_browser_whose_check_is_refused_goes_back_to_the_form_with_the_reason() {
+    let (url, _) = spawn_siteverify().await;
+    let base = spawn(Some(settings(url))).await;
+    let res = client()
+        .post(format!("{base}/auth/oidc/signup"))
+        .form(&[
+            ("turnstile", "spent-or-forged"),
+            ("workspace_name", "Night shift"),
+            ("return_to", "/ui/"),
+        ])
+        .header("accept", "text/html")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let location = res.headers()["location"].to_str().unwrap();
+    assert!(location.starts_with("/ui/?signup_check=1"), "{location}");
+    assert!(location.contains("&signup_error=check"), "{location}");
+    assert!(
+        location.contains("workspace_name=Night%20shift"),
+        "{location}"
+    );
 }
 
 #[tokio::test]

@@ -51,6 +51,7 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
         // signing in.
         <>
         {oidcLoginPath && !check.active ? <p className="sign-in-divider"><span>{signupOpen ? "New to Maidan?" : "Have an invite?"}</span></p> : null}
+        {check.active && check.refusal ? <p className="err small" role="alert">{check.refusal}</p> : null}
         <CreateWorkspace
           action={signupPath ?? "/auth/oidc/signup"}
           initialName={joining ? "" : check.name}

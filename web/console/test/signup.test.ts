@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isWorkspaceInvite, readSignupCheck, sameOriginReturn, turnstileSize, workspaceNameRefusal, WORKSPACE_NAME_MAX } from "../src/core/signup.ts";
+import { isWorkspaceInvite, readSignupCheck, sameOriginReturn, signupRefusalText, turnstileSize, workspaceNameRefusal, WORKSPACE_NAME_MAX } from "../src/core/signup.ts";
 
 test("a blank workspace name is allowed and a bad one is not", () => {
   assert.equal(workspaceNameRefusal(""), null);
@@ -21,7 +21,7 @@ test("the sign-up check keeps the name, the invite and a same-origin return", ()
   assert.equal(check.returnTo, "/ui/");
   assert.equal(isWorkspaceInvite(check.invite), false);
   assert.equal(isWorkspaceInvite("maid_inv_abc"), true);
-  assert.deepEqual(readSignupCheck(""), { active: false, name: "", invite: null, returnTo: "/ui/" });
+  assert.deepEqual(readSignupCheck(""), { active: false, name: "", invite: null, returnTo: "/ui/", refusal: null });
   assert.equal(sameOriginReturn("//evil.example"), "/ui/");
   assert.equal(sameOriginReturn("https://evil.example"), "/ui/");
   assert.equal(sameOriginReturn("/ui/?x=1"), "/ui/?x=1");
@@ -33,4 +33,17 @@ test("the sign-up check is compact in a column narrower than its normal widget",
   assert.equal(turnstileSize(299), "compact");
   assert.equal(turnstileSize(300), "normal");
   assert.equal(turnstileSize(342), "normal");
+});
+
+test("a refused sign-up comes back to the form with a sentence, never a code", () => {
+  const check = readSignupCheck("?signup_check=1&workspace_name=North&signup_error=check");
+  assert.equal(check.active, true);
+  assert.equal(check.name, "North");
+  assert.match(check.refusal ?? "", /human check/);
+  assert.match(signupRefusalText("name") ?? "", /name/);
+  assert.match(signupRefusalText("refused") ?? "", /invite/);
+  assert.match(signupRefusalText("unavailable") ?? "", /moment/);
+  assert.match(signupRefusalText("something-new") ?? "", /Try again/);
+  assert.equal(signupRefusalText(null), null);
+  assert.equal(signupRefusalText(""), null);
 });
