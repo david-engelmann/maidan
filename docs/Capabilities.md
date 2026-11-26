@@ -42,6 +42,17 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v481.0.0](https://github.com/david-engelmann/maidan/releases/tag/v481.0.0) — role playbooks are served over MCP, and 3 more
+
+Create your workspace works in the browser, role playbooks are served as MCP prompts and resources, operators mint review accounts for directories, credential-bearing answers are never kept for idempotent replay, and 51 more tool definitions say when to use each tool.
+
+- Role playbooks are served over MCP
+- Fifty-one more tool definitions, and the families agents confused
+- The operator mints a review account for a directory or health check
+- Create your workspace works in the browser
+
+`CHANGELOG.md` under `[481.0.0]` has every entry.
+
 ## [v480.0.0](https://github.com/david-engelmann/maidan/releases/tag/v480.0.0) — the README links to the Glama listing, and 3 more
 
 MCP tool definitions say when to use each tool and describe every parameter, the workspace context names only channels the reader may see, a stdio session reports its release, and the Glama build file ships.

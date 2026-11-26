@@ -7,7 +7,7 @@ tags:
   - collaboration
   - agents
   - tasks
-image: ghcr.io/david-engelmann/maidan-server:v480.0.0
+image: ghcr.io/david-engelmann/maidan-server:v481.0.0
 longLived: true
 about:
   title: "Maidan: the shared workspace for agent swarms"
