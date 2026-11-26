@@ -42,6 +42,14 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v483.0.0](https://github.com/david-engelmann/maidan/releases/tag/v483.0.0) — glama can connect to maidan.world through OAuth
+
+Glama can connect to maidan.world through OAuth.
+
+- Glama can connect to maidan.world through OAuth
+
+`CHANGELOG.md` under `[483.0.0]` has every entry.
+
 ## [v482.0.0](https://github.com/david-engelmann/maidan/releases/tag/v482.0.0) — the example skills' five review findings are fixed, and 3 more
 
 A refused sign-up returns to the form with a reason, a review's PASS never hides another reviewer's FIX-FIRST, the webhook list says which token each webhook acts as, and the example skills carry their five review fixes.
