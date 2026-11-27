@@ -107,3 +107,12 @@ program or the directory pages, and none is included.
 - The `referenceUrls` point at `main` in Maidan's repository. The four files
   they name exist there today, and they show this change's text once it is on
   `main`.
+
+## Sent
+
+- Filed on 2026-11-25 as
+  [hashgraph-online/hol-guard#8573](https://github.com/hashgraph-online/hol-guard/pull/8573),
+  from the fork `david-engelmann/hol-guard`.
+- Approved on 2026-11-26 and merged on 2026-11-27 as `3b4fa3f5`, with every
+  check in Guard's CI passing. Their review bots raised no finding that needed
+  a change.
