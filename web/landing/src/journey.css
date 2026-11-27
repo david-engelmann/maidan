@@ -112,7 +112,8 @@
 /* One column: the pool crowns the first screen, under the header bar, and
    the words start under it */
 @media (max-width: 1079px) {
-  :root[data-theme="light"] .hero { --stage: min(34svh, 17rem); }
+  /* never under 6rem of water, however short the screen */
+  :root[data-theme="light"] .hero { --stage: max(12rem, min(34svh, 17rem)); }
   :root[data-theme="light"] .hero-pool {
     top: calc(env(safe-area-inset-top) + 4.5rem);
     left: var(--gutter);
@@ -132,7 +133,23 @@
     width: var(--pool-w);
     height: var(--pool-h);
   }
-  :root[data-theme="light"] .hero:not([data-pool]) .hero-pool { display: none; }
+  /* Until pool.ts has measured the words (the server's first paint, or no
+     scripts at all) the pool holds the right of the hero's grid instead,
+     clear of the headline by the same reckoning (it ends about half way
+     across), and at least as tall as the words beside it */
+  :root[data-theme="light"] .hero:not([data-pool]) .hero-pool {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: stretch;
+    left: auto;
+    top: auto;
+    width: calc(50vw - var(--gutter) - 3rem);
+    height: auto;
+    min-height: 24rem;
+    margin-top: 6px;
+  }
 }
 :root[data-theme="light"] .close-pool { inset: 24px var(--gutter) 30px; }
 @media (min-width: 1080px) {

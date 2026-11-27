@@ -369,7 +369,8 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       let box: number[] | null = null;
       if (closeBox && closeBox.top < ch) box = [closeBox.left, closeBox.top, closeBox.right, closeBox.bottom];
       else if (heroBox) box = [heroBox.left, heroBox.top, heroBox.right, heroBox.bottom];
-      if (box && box[2] - box[0] > 200 && box[3] - box[1] > 120) {
+      // the smallest pool CSS draws is 6rem high (journey.css), so any pool it shows is drawn
+      if (box && box[2] - box[0] > 200 && box[3] - box[1] > 48) {
         card[0] = ((box[0] + box[2]) / 2) * size.dpr; card[1] = (ch - (box[1] + box[3]) / 2) * size.dpr;
         card[2] = ((box[2] - box[0]) / 2) * size.dpr; card[3] = ((box[3] - box[1]) / 2) * size.dpr;
         cardR = (wide ? 28 : 22) * size.dpr;
