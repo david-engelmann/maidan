@@ -103,6 +103,40 @@ test("the landing is dark by default and takes the console's stored Light", asyn
   await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
 });
 
+// By day the water is a pool set into the paper, beside the hero's words and
+// round the closing call to action. Where the live water does not draw (in CI
+// WebGL is on the CPU, or missing) each pool shows its still, so the page by
+// day is never bare paper; and the hero ends after its words instead of a
+// screen down, so no band of bare paper stands between it and the next section.
+test("by day each pool holds its still until the water draws, and the hero ends after its words", async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("maidan_console_theme", "light"));
+  await openLanding(page);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const journey = page.locator(".journey");
+  await expect(journey).toHaveAttribute("data-state", /^(running|still|software|fallback)$/);
+  const drawing = /^(running|still)$/.test((await journey.getAttribute("data-state")) ?? "");
+
+  const viewport = page.viewportSize();
+  const hero = await page.locator("main > .hero").boundingBox();
+  expect(hero && viewport && hero.height < viewport.height).toBe(true);
+  // beside the words, clear of the headline that runs past their column
+  const headlineRight = await page.locator("main .hero-copy h1").evaluate((h) => {
+    const range = document.createRange();
+    range.selectNodeContents(h);
+    return range.getBoundingClientRect().right;
+  });
+  const heroPool = await page.locator(".hero-pool").boundingBox();
+  expect(heroPool && heroPool.x >= headlineRight + 40 && heroPool.width > 200 && heroPool.height > 300).toBe(true);
+
+  for (const sel of [".hero-pool", ".close-pool"]) {
+    const pool = page.locator(sel);
+    await pool.scrollIntoViewIfNeeded();
+    await expect(pool).toHaveCSS("background-image", /data:image\/webp/);
+    if (!drawing) await expect(pool).toHaveCSS("opacity", "1");
+  }
+  await page.evaluate(() => window.localStorage.removeItem("maidan_console_theme"));
+});
+
 // The footer's switch writes the console's own choice, so it themes both,
 // and the recording is the console filmed in the page's theme.
 test("the footer's theme switch themes the page and its recording, and the choice is kept", async ({ page }) => {

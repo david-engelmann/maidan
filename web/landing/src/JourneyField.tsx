@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Handle, State } from "./journey";
 import { MediaToggle } from "./MediaToggle";
+import { watchHeroPool } from "./pool";
 import { usePageTheme, usePrefersReducedMotion } from "./stageshow/shared";
 import "./journey.css";
 
@@ -34,6 +35,9 @@ export function JourneyField() {
     opts.current = { light, still, paused };
     handle.current?.update(opts.current);
   }, [light, still, paused]);
+
+  // By day the hero's pool takes its box before the first frame, so its still is never seen moving into place
+  useLayoutEffect(() => watchHeroPool(), []);
 
   // The page's layout and its poster follow the scene from <html>
   const drawing = DRAWING.includes(state);
