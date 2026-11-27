@@ -241,13 +241,15 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
   } | null = null;
 
   // ---- the page: where the acts fall, and what must stay calm
-  const page = { top: null as Element | null, heroCopy: null as Element | null, hero: null as Element | null, close: null as Element | null, heroH: null as Element | null, heroBits: [] as Element[], closeH: null as Element | null, closeCta: null as Element | null, foot: null as Element | null, mid: [] as Element[], how: null as Element | null, hosting: null as Element | null };
+  const page = { top: null as Element | null, heroCopy: null as Element | null, hero: null as Element | null, close: null as Element | null, heroPool: null as Element | null, closePool: null as Element | null, heroH: null as Element | null, heroBits: [] as Element[], closeH: null as Element | null, closeCta: null as Element | null, foot: null as Element | null, mid: [] as Element[], how: null as Element | null, hosting: null as Element | null };
   function findPage() {
     const q = (s: string) => document.querySelector(s);
     page.top = q(".top");
     page.hero = q("main > .hero");
     page.heroCopy = q("main .hero-copy");
     page.close = q("main > .close");
+    page.heroPool = q("main .hero-pool");
+    page.closePool = q("main .close-pool");
     page.heroH = q("main .hero-copy h1");
     page.heroBits = Array.from(document.querySelectorAll("main .hero-copy > .eyebrow, main .hero-copy > .lede, main .hero-copy > .works"));
     page.closeH = q(".close h2");
@@ -351,24 +353,24 @@ export function mount(host: HTMLElement, canvas: HTMLCanvasElement, initial: Opt
       hotSpan = wide ? [0.72, 0.42] : [0.5, 0.95];
     }
     // By day the water is a pool set into the paper: beside the hero's words
-    // on a wide screen, and round the closing call to action. Its middle and
-    // half its size, in the canvas's pixels (from the bottom), and its corner.
+    // on a wide screen, over them on a narrow one, and round the closing call
+    // to action. Each pool's box is its .pool element's (journey.css, pool.ts),
+    // where its still stands until this draws. Its middle and half its size,
+    // in the canvas's pixels (from the bottom), and its corner.
     const card = [0, 0, 0, 0];
     let cardR = 0;
     if (opts.light) {
-      const gutter = page.heroCopy?.getBoundingClientRect().left ?? 24;
-      const closeBox = page.close?.getBoundingClientRect();
-      const heroBox = page.hero?.getBoundingClientRect();
+      const shown = (el: Element | null) => {
+        const r = el?.getBoundingClientRect();
+        return r && r.width > 0 && r.height > 0 ? r : null;
+      };
+      const closeBox = shown(page.closePool);
+      const heroBox = shown(page.heroPool);
       let box: number[] | null = null;
-      if (closeBox && closeBox.top < ch) box = [gutter, closeBox.top + (wide ? 40 : 24), size.w - gutter, closeBox.bottom - (wide ? 44 : 30)];
-      else if (wide && heroBox) {
-        // beside the hero's words and as tall as they are, so it is set with them and does not float
-        const copy = page.heroCopy?.getBoundingClientRect();
-        const words = Math.max(copy?.right ?? 0, ink(page.heroH)?.right ?? 0);
-        const top = (copy?.top ?? heroBox.top + 150) + 6;
-        box = [Math.max(words + 56, size.w * 0.5), top, size.w - gutter, Math.max((copy?.bottom ?? top) - 4, top + 380)];
-      }
-      if (box && box[2] - box[0] > 200 && box[3] - box[1] > 120) {
+      if (closeBox && closeBox.top < ch) box = [closeBox.left, closeBox.top, closeBox.right, closeBox.bottom];
+      else if (heroBox) box = [heroBox.left, heroBox.top, heroBox.right, heroBox.bottom];
+      // the smallest pool CSS draws is 6rem high (journey.css), so any pool it shows is drawn
+      if (box && box[2] - box[0] > 200 && box[3] - box[1] > 48) {
         card[0] = ((box[0] + box[2]) / 2) * size.dpr; card[1] = (ch - (box[1] + box[3]) / 2) * size.dpr;
         card[2] = ((box[2] - box[0]) / 2) * size.dpr; card[3] = ((box[3] - box[1]) / 2) * size.dpr;
         cardR = (wide ? 28 : 22) * size.dpr;

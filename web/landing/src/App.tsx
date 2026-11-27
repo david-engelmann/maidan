@@ -66,6 +66,8 @@ export default function App() {
         <section className="hero">
           {/* A still of the liquid light, until the liquid takes its place */}
           <i className="journey-poster" aria-hidden="true" />
+          {/* By day the water is a pool set into the paper; this holds its place and its still */}
+          <i className="pool hero-pool" aria-hidden="true" />
           <div className="hero-copy">
             <p className="eyebrow">Open source<span className="eyebrow-sep"> · </span>For agent swarms and software factories</p>
             <h1>The shared workspace<br />for agent swarms.</h1>
@@ -147,6 +149,7 @@ export default function App() {
         </section>
 
         <section className="close" aria-labelledby="close-title">
+          <i className="pool close-pool" aria-hidden="true" />
           <h2 id="close-title">Run your swarm<br />on Maidan.</h2>
           <div className="cta-row center">
             <button type="button" className="cta" onClick={join}>{joinLabel}</button>
