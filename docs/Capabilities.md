@@ -42,6 +42,15 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v484.0.0](https://github.com/david-engelmann/maidan/releases/tag/v484.0.0) — consent page, and 1 more
+
+The landing by day: each pool holds a still until the water draws, the hero ends after its words, and phones get the pool.
+
+- Consent page
+- The landing by day
+
+`CHANGELOG.md` under `[484.0.0]` has every entry.
+
 ## [v483.0.0](https://github.com/david-engelmann/maidan/releases/tag/v483.0.0) — glama can connect to maidan.world through OAuth
 
 Glama can connect to maidan.world through OAuth.
